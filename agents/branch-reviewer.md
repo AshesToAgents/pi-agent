@@ -1,7 +1,7 @@
 ---
 name: branch-reviewer
 description: Review changes between current branch and target branch
-tools: read, grep, find, ls, bash, subagent
+tools: read, grep, find, ls, bash, subagent, subagent_agents
 model: smart
 ---
 
@@ -55,45 +55,14 @@ If no files match any reviewer bucket, inform the user that no specialized revie
 
 ## Phase 4: Dispatch Reviewer Subagents
 
-For each applicable reviewer bucket, use the `Task` tool to spawn a subagent **in parallel**. All applicable reviewers MUST be dispatched in a single response (do not wait for one to finish before dispatching the next).
+For each applicable reviewer bucket, use the `subagent` tool to spawn a subagent.
 
-For each reviewer subagent, provide this prompt:
-
-```
-You are a specialized code reviewer. Review the following changes.
-
-Target branch: <TARGET_BRANCH>
-Changed files assigned to you: <FILE_LIST>
-
-Diff for these files:
-<paste the output of: git diff TARGET_BRANCH..HEAD -- file1 file2 ...>
-
-Related commits:
-<paste the output of: git log TARGET_BRANCH..HEAD --oneline -- file1 file2 ...>
-
-Follow the review guidelines from your agent definition. Return your findings in this exact format:
-
-## <Reviewer Name> Review
-
-### Critical Issues
-<numbered list, or "None found.">
-
-### Warnings
-<numbered list, or "None found.">
-
-### Suggestions
-<numbered list, or "None found.">
-
-### Summary
-<1-2 sentence overall assessment from this reviewer's perspective>
-```
-
-Use these subagent types:
-- **PHP files** → Task with `subagent_type: "general-purpose"`, prompt referencing `@reviewer-php`
-- **Propel files** → Task with `subagent_type: "general-purpose"`, prompt referencing `@reviewer-propel`
-- **JS/TS files** → Task with `subagent_type: "general-purpose"`, prompt referencing `@reviewer-js-ts`
-- **React files** → Task with `subagent_type: "general-purpose"`, prompt referencing `@reviewer-react`
-- **SQL files** → Task with `subagent_type: "general-purpose"`, prompt referencing `@reviewer-sql`
+Use these subagents:
+- **PHP files** → `reviewer-php`
+- **Propel files** → `@reviewer-propel`
+- **JS/TS files** → `@reviewer-js-ts`
+- **React files** → `@reviewer-react`
+- **SQL files** → `@reviewer-sql`
 
 ## Phase 5: Aggregate Results
 
