@@ -16,6 +16,7 @@ export interface AgentConfig {
 	systemPrompt: string;
 	source: "user" | "project";
 	filePath: string;
+	rootDir: string;
 }
 
 export interface AgentDiscoveryResult {
@@ -30,47 +31,57 @@ function loadAgentsFromDir(dir: string, source: "user" | "project"): AgentConfig
 		return agents;
 	}
 
-	let entries: fs.Dirent[];
-	try {
-		entries = fs.readdirSync(dir, { withFileTypes: true });
-	} catch {
-		return agents;
-	}
-
-	for (const entry of entries) {
-		if (!entry.name.endsWith(".md")) continue;
-		if (!entry.isFile() && !entry.isSymbolicLink()) continue;
-
-		const filePath = path.join(dir, entry.name);
-		let content: string;
+	const walk = (currentDir: string) => {
+		let entries: fs.Dirent[];
 		try {
-			content = fs.readFileSync(filePath, "utf-8");
+			entries = fs.readdirSync(currentDir, { withFileTypes: true });
 		} catch {
-			continue;
+			return;
 		}
 
-		const { frontmatter, body } = parseFrontmatter<Record<string, string>>(content);
+		for (const entry of entries) {
+			const fullPath = path.join(currentDir, entry.name);
 
-		if (!frontmatter.name || !frontmatter.description) {
-			continue;
+			if (entry.isDirectory()) {
+				walk(fullPath);
+				continue;
+			}
+
+			if (!entry.name.endsWith(".md")) continue;
+			if (!entry.isFile() && !entry.isSymbolicLink()) continue;
+
+			let content: string;
+			try {
+				content = fs.readFileSync(fullPath, "utf-8");
+			} catch {
+				continue;
+			}
+
+			const { frontmatter, body } = parseFrontmatter<Record<string, string>>(content);
+
+			if (!frontmatter.name || !frontmatter.description) {
+				continue;
+			}
+
+			const tools = frontmatter.tools
+				?.split(",")
+				.map((t: string) => t.trim())
+				.filter(Boolean);
+
+			agents.push({
+				name: frontmatter.name,
+				description: frontmatter.description,
+				tools: tools && tools.length > 0 ? tools : undefined,
+				model: frontmatter.model,
+				systemPrompt: body,
+				source,
+				filePath: fullPath,
+				rootDir: dir,
+			});
 		}
+	};
 
-		const tools = frontmatter.tools
-			?.split(",")
-			.map((t: string) => t.trim())
-			.filter(Boolean);
-
-		agents.push({
-			name: frontmatter.name,
-			description: frontmatter.description,
-			tools: tools && tools.length > 0 ? tools : undefined,
-			model: frontmatter.model,
-			systemPrompt: body,
-			source,
-			filePath,
-		});
-	}
-
+	walk(dir);
 	return agents;
 }
 
@@ -113,6 +124,10 @@ export function discoverAgents(cwd: string, scope: AgentScope): AgentDiscoveryRe
 	}
 
 	return { agents: Array.from(agentMap.values()), projectAgentsDir };
+}
+
+export function isTopLevelAgent(agent: AgentConfig): boolean {
+	return path.dirname(agent.filePath) === agent.rootDir;
 }
 
 export function formatAgentList(agents: AgentConfig[], maxItems: number): { text: string; remaining: number } {

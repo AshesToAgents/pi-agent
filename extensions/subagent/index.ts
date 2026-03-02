@@ -31,22 +31,24 @@ const MODEL_TIERS: Record<string, Record<string, string>> = {
 	fast: {
 		anthropic: "claude-haiku-4-5",
 		openai: "gpt-4o-mini",
-		google: "gemini-2.0-flash",
+		google: "gemini-3-flash",
+		"google-antigravity": "gemini-3-flash",
 		deepseek: "deepseek-chat",
 		"ollama-local": "parent",
 		"ollama-remote": "parent",
 		lmstudio: "parent",
-		"openai-codex": "parent",
+		"openai-codex": "gpt-5.1-codex-mini",
 	},
 	smart: {
 		anthropic: "claude-sonnet-4-5",
 		openai: "gpt-4o",
-		google: "gemini-2.5-pro",
+		google: "gemini-3-pro-high",
+		"google-antigravity": "gemini-3-pro-high",
 		deepseek: "deepseek-reasoner",
 		"ollama-local": "parent",
 		"ollama-remote": "parent",
 		lmstudio: "parent",
-		"openai-codex": "parent",
+		"openai-codex": "gpt-5.3-codex",
 	},
 };
 
@@ -94,7 +96,7 @@ function resolveModel(
 }
 import { Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.js";
+import { type AgentConfig, type AgentScope, discoverAgents, isTopLevelAgent } from "./agents.js";
 
 const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENCY = 4;
@@ -103,6 +105,10 @@ const COLLAPSED_ITEM_COUNT = 10;
 const CHILD_PROCESS_ENV_FLAG = "PI_SUBAGENT_CHILD";
 const EXTENSION_TOOLS_FLAG = "extension-tools";
 const BUILTIN_TOOLS = new Set(["read", "bash", "edit", "write", "grep", "find", "ls"]);
+const DEFAULT_AGENT_SCOPE: AgentScope = "both";
+const SYSTEM_PROMPT_AGENT_OVERVIEW_LIMIT = 12;
+
+type AgentInfoDetail = "summary" | "full";
 
 function parseToolList(value: string | boolean | undefined): Set<string> {
 	if (typeof value !== "string") return new Set();
@@ -137,6 +143,114 @@ function getToolPolicy(agent: AgentConfig): {
 		builtinToolsForCli: builtinToolsForCli.length > 0 ? builtinToolsForCli : undefined,
 		extensionToolsForCli: extensionTools.length > 0 ? extensionTools.join(",") : undefined,
 	};
+}
+
+function sortAgentsByName(agents: AgentConfig[]): AgentConfig[] {
+	return [...agents].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function formatAgentSummaryList(agents: AgentConfig[]): string {
+	if (agents.length === 0) return "none";
+	return agents.map((a) => `- ${a.name}: ${a.description}`).join("\n");
+}
+
+function formatAgentFullList(agents: AgentConfig[]): string {
+	if (agents.length === 0) return "none";
+	return agents
+		.map((a) => {
+			const lines = [
+				`- ${a.name}: ${a.description}`,
+				`  source: ${a.source}`,
+				`  model: ${a.model ?? "(default)"}`,
+				`  tools: ${a.tools?.join(", ") ?? "(all default tools)"}`,
+				`  path: ${a.filePath}`,
+			];
+			return lines.join("\n");
+		})
+		.join("\n\n");
+}
+
+function buildSubagentAgentsReport(cwd: string, agentScope: AgentScope, detail: AgentInfoDetail): {
+	text: string;
+	discovery: ReturnType<typeof discoverAgents>;
+	agents: AgentConfig[];
+} {
+	const discovery = discoverAgents(cwd, agentScope);
+	const agents = sortAgentsByName(discovery.agents);
+
+	const header = `Available subagents: ${agents.length} (scope: ${agentScope})`;
+	const body = detail === "full" ? formatAgentFullList(agents) : formatAgentSummaryList(agents);
+	const hint =
+		detail === "summary"
+			? '\n\nTip: use detail="full" for source/model/tools/path.'
+			: "";
+	const projectDir = discovery.projectAgentsDir ? `\nProject agents dir: ${discovery.projectAgentsDir}` : "";
+
+	return {
+		text: `${header}\n\n${body}${hint}${projectDir}`,
+		discovery,
+		agents,
+	};
+}
+
+function buildSubagentOverviewForPrompt(cwd: string): string {
+	const discovery = discoverAgents(cwd, DEFAULT_AGENT_SCOPE);
+	const topLevelAgents = sortAgentsByName(discovery.agents.filter((a) => isTopLevelAgent(a)));
+
+	if (topLevelAgents.length === 0) {
+		return [
+			"## Available subagents",
+			"No top-level subagents are currently discovered.",
+			"If needed, call the `subagent_agents` tool for the full list (including nested agent files).",
+		].join("\n");
+	}
+
+	const listed = topLevelAgents.slice(0, SYSTEM_PROMPT_AGENT_OVERVIEW_LIMIT);
+	const remaining = topLevelAgents.length - listed.length;
+	const moreLine = remaining > 0 ? `\n- ... and ${remaining} more top-level agents (call subagent_agents for full list)` : "";
+
+	return [
+		"## Available subagents (overview)",
+		"Use the `subagent` tool with one of these agent names.",
+		"This overview is intentionally compact and only includes top-level agents (names + descriptions).",
+		"",
+		listed.map((a) => `- ${a.name}: ${a.description}`).join("\n") + moreLine,
+		"",
+		'If you need more details, call `subagent_agents` (supports `agentScope: "user" | "project" | "both"`, default `"both"`).',
+	].join("\n");
+}
+
+function parseSubagentsCommandArgs(args: string): { agentScope: AgentScope; detail: AgentInfoDetail; error?: string } {
+	const tokens = args
+		.toLowerCase()
+		.split(/\s+/)
+		.map((t) => t.trim())
+		.filter(Boolean);
+
+	let agentScope: AgentScope = DEFAULT_AGENT_SCOPE;
+	let detail: AgentInfoDetail = "summary";
+
+	for (const token of tokens) {
+		if (token === "user" || token === "project" || token === "both") {
+			agentScope = token;
+			continue;
+		}
+		if (token === "summary") {
+			detail = "summary";
+			continue;
+		}
+		if (token === "full" || token === "verbose") {
+			detail = "full";
+			continue;
+		}
+		return {
+			agentScope,
+			detail,
+			error: `Unknown argument: ${token}. Use scope {user|project|both} and optional {summary|full}.`,
+		};
+	}
+
+	return { agentScope, detail };
 }
 
 function formatTokens(count: number): string {
@@ -518,8 +632,18 @@ const ChainItem = Type.Object({
 });
 
 const AgentScopeSchema = StringEnum(["user", "project", "both"] as const, {
-	description: 'Which agent directories to use. Default: "user". Use "both" to include project-local agents.',
-	default: "user",
+	description: 'Which agent directories to use. Default: "both".',
+	default: "both",
+});
+
+const AgentInfoDetailSchema = StringEnum(["summary", "full"] as const, {
+	description: 'Level of detail. "summary" shows name and description only (default).',
+	default: "summary",
+});
+
+const SubagentAgentsParams = Type.Object({
+	agentScope: Type.Optional(AgentScopeSchema),
+	detail: Type.Optional(AgentInfoDetailSchema),
 });
 
 const SubagentParams = Type.Object({
@@ -557,19 +681,80 @@ export default function (pi: ExtensionAPI) {
 		};
 	});
 
+	pi.on("before_agent_start", async (event, ctx) => {
+		if (process.env[CHILD_PROCESS_ENV_FLAG] === "1") return;
+		const overview = buildSubagentOverviewForPrompt(ctx.cwd);
+		return {
+			systemPrompt: `${event.systemPrompt}\n\n${overview}`,
+		};
+	});
+
+	pi.registerTool({
+		name: "subagent_agents",
+		label: "Subagent Agents",
+		description:
+			"List available subagents. Defaults to a quick overview (name + description). Use detail=\"full\" for model/tools/source/path.",
+		parameters: SubagentAgentsParams,
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const agentScope: AgentScope = params.agentScope ?? DEFAULT_AGENT_SCOPE;
+			const detail: AgentInfoDetail = (params.detail ?? "summary") as AgentInfoDetail;
+			const report = buildSubagentAgentsReport(ctx.cwd, agentScope, detail);
+
+			return {
+				content: [{ type: "text", text: report.text }],
+				details: {
+					agentScope,
+					detail,
+					projectAgentsDir: report.discovery.projectAgentsDir,
+					agents: report.agents.map((a) => ({
+						name: a.name,
+						description: a.description,
+						source: a.source,
+						model: a.model,
+						tools: a.tools,
+						filePath: a.filePath,
+					})),
+				},
+			};
+		},
+	});
+
+	pi.registerCommand("subagents", {
+		description: "List available subagents. Usage: /subagents [user|project|both] [summary|full]",
+		handler: async (args, ctx) => {
+			const parsed = parseSubagentsCommandArgs(args);
+			if (parsed.error) {
+				ctx.ui.notify(parsed.error, "warning");
+				return;
+			}
+
+			const report = buildSubagentAgentsReport(ctx.cwd, parsed.agentScope, parsed.detail);
+			pi.sendMessage({
+				customType: "subagent-agents",
+				content: report.text,
+				display: true,
+				details: {
+					agentScope: parsed.agentScope,
+					detail: parsed.detail,
+					agentCount: report.agents.length,
+				},
+			});
+		},
+	});
+
 	pi.registerTool({
 		name: "subagent",
 		label: "Subagent",
 		description: [
 			"Delegate tasks to specialized subagents with isolated context.",
 			"Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder).",
-			'Default agent scope is "user" (from ~/.pi/agent/agents).',
-			'To enable project-local agents in .pi/agents, set agentScope: "both" (or "project").',
+			'Default agent scope is "both" (user + project agents).',
+			'Use subagent_agents for quick discovery (name + description) or full metadata.',
 		].join(" "),
 		parameters: SubagentParams,
 
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
-			const agentScope: AgentScope = params.agentScope ?? "user";
+			const agentScope: AgentScope = params.agentScope ?? DEFAULT_AGENT_SCOPE;
 			const discovery = discoverAgents(ctx.cwd, agentScope);
 			const agents = discovery.agents;
 			const confirmProjectAgents = params.confirmProjectAgents ?? true;
@@ -804,7 +989,7 @@ export default function (pi: ExtensionAPI) {
 		},
 
 		renderCall(args, theme) {
-			const scope: AgentScope = args.agentScope ?? "user";
+			const scope: AgentScope = args.agentScope ?? DEFAULT_AGENT_SCOPE;
 			if (args.chain && args.chain.length > 0) {
 				let text =
 					theme.fg("toolTitle", theme.bold("subagent ")) +

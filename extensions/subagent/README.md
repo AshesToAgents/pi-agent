@@ -31,6 +31,12 @@ Three modes:
   })
   ```
 
+- **Discover agent metadata** (LLM can call this itself)
+  ```typescript
+  subagent_agents({ agentScope: "both" })                 // default: summary (name + description)
+  subagent_agents({ agentScope: "project", detail: "full" })
+  ```
+
 ## Agent Discovery
 
 Agents are discovered from:
@@ -40,9 +46,20 @@ Agents are discovered from:
 
 Control this via `agentScope`:
 
-- `"user"` (default): user agents only
+- `"both"` (default): user + project agents (project overrides on name conflicts)
+- `"user"`: user agents only
 - `"project"`: project agents only
-- `"both"`: load both (project overrides on name conflicts)
+
+The extension injects a compact agent overview into `before_agent_start` using only **top-level** agent files (name + description).
+If the model needs more detail (including nested agent files), it can call `subagent_agents`.
+
+For users, `/subagents` provides the same discovery output in-session:
+
+```text
+/subagents                  # both + summary (default)
+/subagents project full     # project scope with full metadata
+/subagents user summary
+```
 
 ## Security Model
 
