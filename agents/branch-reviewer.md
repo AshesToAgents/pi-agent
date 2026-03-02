@@ -55,7 +55,7 @@ If no files match any reviewer bucket, inform the user that no specialized revie
 
 ## Phase 4: Dispatch Reviewer Subagents
 
-For each applicable reviewer bucket, use the `subagent` tool to spawn a subagent.
+For each applicable reviewer bucket, use the `subagent` tool to spawn appropriate subagents in parallel.
 
 Use these subagents:
 - **PHP files** → `reviewer-php`
