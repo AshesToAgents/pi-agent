@@ -31,7 +31,7 @@ const MODEL_TIERS: Record<string, Record<string, string>> = {
 	fast: {
 		anthropic: "claude-haiku-4-5",
 		openai: "gpt-4o-mini",
-		google: "gemini-3-flash",
+		"google-gemini-cli": "gemini-3-flash-preview",
 		"google-antigravity": "gemini-3-flash",
 		deepseek: "deepseek-chat",
 		"ollama-local": "parent",
@@ -42,7 +42,7 @@ const MODEL_TIERS: Record<string, Record<string, string>> = {
 	smart: {
 		anthropic: "claude-sonnet-4-5",
 		openai: "gpt-4o",
-		google: "gemini-3-pro-high",
+		"google-gemini-cli": "gemini-3.1-pro-preview",
 		"google-antigravity": "gemini-3-pro-high",
 		deepseek: "deepseek-reasoner",
 		"ollama-local": "parent",
