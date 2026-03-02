@@ -1,4 +1,5 @@
 .idea
+.pi
 models.json
 auth.json
 bin/
