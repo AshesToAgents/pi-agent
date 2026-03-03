@@ -21,8 +21,11 @@ Return details shape:
 
 ```ts
 {
+  question: string;
   selected: string;
   isCustom: boolean;
+  options: string[];
+  allowCustom: boolean;
 }
 ```
 
@@ -36,8 +39,76 @@ Return details shape:
 }
 ```
 
+## Events
+
+The extension emits the following events:
+
+### `ask-user:tool-called`
+Emitted whenever the tool is invoked, immediately after parameters are normalized.
+
+Payload schema:
+
+```ts
+{
+  toolCallId: string;
+  question: string;
+  options: string[];
+  allowCustom: boolean;
+}
+```
+
+### `ask-user:answered`
+Emitted when the user successfully submits an answer (predefined option or custom text).
+
+Payload schema:
+
+```ts
+{
+  toolCallId: string;
+  question: string;
+  selected: string;
+  isCustom: boolean;
+  options: string[];
+  allowCustom: boolean;
+}
+```
+
+### `ask-user:canceled`
+Emitted when the user cancels either the selection dialog or the custom input dialog.
+
+Payload schema:
+
+```ts
+{
+  toolCallId: string;
+  question: string;
+  options: string[];
+  allowCustom: boolean;
+  stage: "select" | "custom-input";
+}
+```
+
+### Listener Example
+
+Other extensions can listen to these events using the `pi.events.on(...)` API:
+
+```ts
+pi.events.on("ask-user:tool-called", (payload) => {
+  console.log("AskUser tool invoked:", payload.question);
+});
+
+pi.events.on("ask-user:answered", (payload) => {
+  console.log("AskUser answered:", payload.selected, "custom:", payload.isCustom);
+});
+
+pi.events.on("ask-user:canceled", (payload) => {
+  console.log("AskUser canceled at stage:", payload.stage);
+});
+```
+
 ## Notes
 
 - Requires interactive UI mode (`ctx.hasUI === true`).
 - In non-interactive mode, the tool returns an error.
 - If custom input is empty, the prompt is shown again.
+- Validation errors (empty question/options, missing UI) are not treated as user cancel events.

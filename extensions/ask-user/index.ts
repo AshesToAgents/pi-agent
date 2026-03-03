@@ -48,7 +48,7 @@ export default function askUserExtension(pi: ExtensionAPI) {
 				}),
 			),
 		}),
-		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+		async execute(toolCallId, params, _signal, _onUpdate, ctx) {
 			const question = params.question?.trim();
 			const options = (params.options ?? []).map((o) => o?.trim()).filter(Boolean) as string[];
 			const allowCustom = params.allowCustom ?? true;
@@ -60,6 +60,13 @@ export default function askUserExtension(pi: ExtensionAPI) {
 				options,
 				allowCustom,
 			};
+
+			pi.events.emit("ask-user:tool-called", {
+				toolCallId,
+				question: baseDetails.question,
+				options: baseDetails.options,
+				allowCustom: baseDetails.allowCustom,
+			});
 
 			if (!question) {
 				return {
@@ -90,6 +97,14 @@ export default function askUserExtension(pi: ExtensionAPI) {
 			const choice = await ctx.ui.select(question, selectable);
 
 			if (!choice) {
+				pi.events.emit("ask-user:canceled", {
+					toolCallId,
+					question,
+					options,
+					allowCustom,
+					stage: "select",
+				});
+
 				return {
 					content: [{ type: "text", text: "Error: question was canceled by the user." }],
 					details: baseDetails,
@@ -101,6 +116,14 @@ export default function askUserExtension(pi: ExtensionAPI) {
 				while (true) {
 					const custom = await ctx.ui.input(question, "Enter your custom answer");
 					if (custom === undefined) {
+						pi.events.emit("ask-user:canceled", {
+							toolCallId,
+							question,
+							options,
+							allowCustom,
+							stage: "custom-input",
+						});
+
 						return {
 							content: [{ type: "text", text: "Error: custom answer entry was canceled by the user." }],
 							details: { ...baseDetails, isCustom: true },
@@ -114,12 +137,30 @@ export default function askUserExtension(pi: ExtensionAPI) {
 						continue;
 					}
 
+					pi.events.emit("ask-user:answered", {
+						toolCallId,
+						question,
+						selected: trimmed,
+						isCustom: true,
+						options,
+						allowCustom,
+					});
+
 					return {
 						content: [{ type: "text", text: `User selected custom answer: ${trimmed}` }],
 						details: { ...baseDetails, selected: trimmed, isCustom: true },
 					};
 				}
 			}
+
+			pi.events.emit("ask-user:answered", {
+				toolCallId,
+				question,
+				selected: choice,
+				isCustom: false,
+				options,
+				allowCustom,
+			});
 
 			return {
 				content: [{ type: "text", text: `User selected option: ${choice}` }],
