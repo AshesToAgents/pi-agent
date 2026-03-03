@@ -19,45 +19,30 @@ import * as path from "node:path";
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import type { Message, Model } from "@mariozechner/pi-ai";
 import { StringEnum } from "@mariozechner/pi-ai";
-import { type ExtensionAPI, type ModelRegistry, getMarkdownTheme } from "@mariozechner/pi-coding-agent";
+import { type ExtensionAPI, type ModelRegistry, getAgentDir, getMarkdownTheme } from "@mariozechner/pi-coding-agent";
 
-/**
- * Model tier aliases. Agent definitions can use these instead of hardcoded model IDs.
- * "parent" = use the same model as the parent agent.
- * "fast" = cheapest/fastest model from the current provider.
- * "smart" = most capable model from the current provider.
- */
-const MODEL_TIERS: Record<string, Record<string, string>> = {
-	fast: {
-		anthropic: "claude-haiku-4-5",
-		openai: "gpt-4o-mini",
-		"google-gemini-cli": "gemini-3-flash-preview",
-		"google-antigravity": "gemini-3-flash",
-		deepseek: "deepseek-chat",
-		"ollama-local": "parent",
-		"ollama-remote": "parent",
-		lmstudio: "parent",
-		"openai-codex": "gpt-5.1-codex-mini",
-	},
-	smart: {
-		anthropic: "claude-sonnet-4-5",
-		openai: "gpt-4o",
-		"google-gemini-cli": "gemini-3.1-pro-preview",
-		"google-antigravity": "gemini-3-pro-high",
-		deepseek: "deepseek-reasoner",
-		"ollama-local": "parent",
-		"ollama-remote": "parent",
-		lmstudio: "parent",
-		"openai-codex": "gpt-5.3-codex",
-	},
-};
+function readSettings(): Record<string, any> {
+	const settingsPath = path.join(getAgentDir(), "settings.json");
+	try {
+		return JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+	} catch {
+		return {};
+	}
+}
+
+function writeSetting(key: string, value: string): void {
+	const settingsPath = path.join(getAgentDir(), "settings.json");
+	const settings = readSettings();
+	settings[key] = value;
+	fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+}
 
 /**
  * Resolve an agent's model field to a concrete "provider/modelId" string.
  *
  * - undefined / "" → undefined (let pi pick default)
  * - "parent"       → same model as the parent agent
- * - "fast"/"smart" → provider-appropriate model from MODEL_TIERS
+ * - "fast"/"smart" → model alias from settings.json (fastModel/smartModel)
  * - "provider/id"  → passed through as-is
  * - "modelId"      → prefixed with current provider
  */
@@ -75,12 +60,11 @@ function resolveModel(
 		return `${currentModel.provider}/${currentModel.id}`;
 	}
 
-	if (key in MODEL_TIERS) {
-		const provider = currentModel?.provider ?? "anthropic";
-		const tier = MODEL_TIERS[key];
-		const resolved = tier[provider] ?? tier["anthropic"];
-		// Allow tier values to be aliases themselves (e.g. "parent")
-		return resolveModel(resolved, currentModel, modelRegistry);
+	if (key === "fast" || key === "smart") {
+		const settings = readSettings();
+		const settingKey = key === "fast" ? "fastModel" : "smartModel";
+		const configuredModel = typeof settings[settingKey] === "string" ? settings[settingKey].trim() : "";
+		return resolveModel(configuredModel || "parent", currentModel, modelRegistry);
 	}
 
 	// Already has provider prefix
@@ -738,6 +722,68 @@ export default function (pi: ExtensionAPI) {
 					detail: parsed.detail,
 					agentCount: report.agents.length,
 				},
+			});
+		},
+	});
+
+	pi.registerCommand("subagent-models", {
+		description: "Configure model aliases used by subagents for fast/smart tiers.",
+		handler: async (_args, ctx) => {
+			const settings = readSettings();
+			const currentFast = typeof settings.fastModel === "string" && settings.fastModel.trim() ? settings.fastModel : "parent";
+			const currentSmart =
+				typeof settings.smartModel === "string" && settings.smartModel.trim() ? settings.smartModel : "parent";
+
+			if (!ctx.hasUI) {
+				pi.sendMessage({
+					customType: "subagent-models",
+					content: `Current subagent model aliases:\n- fast: ${currentFast}\n- smart: ${currentSmart}`,
+					display: true,
+				});
+				return;
+			}
+
+			const tierChoice = await ctx.ui.select("Select tier to configure", [
+				`fast (${currentFast})`,
+				`smart (${currentSmart})`,
+			]);
+			if (!tierChoice) {
+				ctx.ui.notify("Canceled subagent model selection.", "warning");
+				return;
+			}
+
+			const tier = tierChoice.startsWith("fast") ? "fast" : "smart";
+			const availableModels = Array.from(
+				new Set((ctx.modelRegistry?.getAvailable() ?? []).map((model) => `${model.provider}/${model.id}`)),
+			).sort();
+			if (availableModels.length === 0) {
+				ctx.ui.notify("No available models found in registry.", "warning");
+				return;
+			}
+
+			const selectedModel = await ctx.ui.select(`Select model for ${tier}`, availableModels);
+			if (!selectedModel) {
+				ctx.ui.notify("Canceled model selection.", "warning");
+				return;
+			}
+
+			writeSetting(`${tier}Model`, selectedModel);
+
+			const updatedSettings = readSettings();
+			const updatedFast =
+				typeof updatedSettings.fastModel === "string" && updatedSettings.fastModel.trim()
+					? updatedSettings.fastModel
+					: "parent";
+			const updatedSmart =
+				typeof updatedSettings.smartModel === "string" && updatedSettings.smartModel.trim()
+					? updatedSettings.smartModel
+					: "parent";
+			ctx.ui.notify(`Updated ${tier} model to ${selectedModel}`, "success");
+			pi.sendMessage({
+				customType: "subagent-models",
+				content: `Updated subagent model aliases:\n- fast: ${updatedFast}\n- smart: ${updatedSmart}`,
+				display: true,
+				details: { tier, selectedModel, fastModel: updatedFast, smartModel: updatedSmart },
 			});
 		},
 	});
