@@ -79,10 +79,9 @@ export default function webToolsExtension(pi: ExtensionAPI) {
 		name: "web_search",
 		label: "Web Search",
 		description: "Search the web using Anthropic's web search. Returns search results with titles, URLs, and snippets.",
-		promptSnippet: "Search the web for information (Anthropic models only)",
+		promptSnippet: "Search the web for information",
 		promptGuidelines: [
 			"Use web_search when the user needs current information from the internet.",
-			"This tool is only available when using an Anthropic model.",
 		],
 		parameters: Type.Object({
 			query: Type.String({ description: "Search query" }),
@@ -249,10 +248,9 @@ export default function webToolsExtension(pi: ExtensionAPI) {
 		name: "web_fetch",
 		label: "Web Fetch",
 		description: "Fetch a web page and return its content as text. Uses Anthropic's web fetch to get clean page content.",
-		promptSnippet: "Fetch a web page and return its content (Anthropic models only)",
+		promptSnippet: "Fetch a web page and return its content",
 		promptGuidelines: [
 			"Use web_fetch to retrieve the content of a specific URL.",
-			"This tool is only available when using an Anthropic model.",
 		],
 		parameters: Type.Object({
 			url: Type.String({ description: "URL to fetch" }),
