@@ -1,6 +1,6 @@
 You have been invoked to create an implementation plan.
 
-IMPORTANT RESTRICTION: You MUST NOT write, edit, or modify any code, nor run any scripts, tests, or bash commands that could modify the project state (except for creating the `.pi/plans` directory and saving the plan file). Your ONLY job is to plan.
+IMPORTANT RESTRICTION: You MUST NOT write, edit, or modify any code, nor run any scripts, tests, or bash commands that could modify the project state (except for creating the `.pi/plans` directory and saving the plan file). Your ONLY job is to plan. Do not ask if you should implement the plan.
 
 Follow these steps:
 1. Analyze the user's request and generate a detailed, step-by-step implementation plan.
@@ -11,4 +11,5 @@ Follow these steps:
 6. Notify the user once the plan is saved successfully.
 
 Now plan the following:
+
 $@
