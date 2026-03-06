@@ -23,19 +23,15 @@ function uniqueOtherLabel(options: string[]): string {
 }
 
 export default function askUserExtension(pi: ExtensionAPI) {
-	pi.on("before_agent_start", async (event) => {
-		const askUserPrompt =
-			"## Ask User Tool\nThe `askUser` tool should be preferred whenever possible for asking the user questions instead of requesting the user to answer in plain text.";
-		return {
-			systemPrompt: `${event.systemPrompt}\n\n${askUserPrompt}`,
-		};
-	});
-
 	pi.registerTool({
 		name: "askUser",
 		label: "Ask User",
 		description:
 			"Ask the user a multiple-choice question in the Pi TUI. Includes predefined options plus a final custom-text option.",
+		promptSnippet: "Ask the user a multiple-choice question in the Pi TUI",
+		promptGuidelines: [
+			"Prefer the askUser tool whenever possible for asking the user questions instead of requesting plain-text replies.",
+		],
 		parameters: Type.Object({
 			question: Type.String({ description: "Question to show the user" }),
 			options: Type.Array(Type.String(), {
