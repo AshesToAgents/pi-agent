@@ -434,7 +434,9 @@ function extractSearchResultsWithDetails(data: any): { text: string; searchResul
 		if (block.type === "web_search_tool_result") {
 			for (const result of block.content ?? []) {
 				if (result.type === "web_search_result") {
-					parts.push(`### ${result.title}\n${result.url}\n${result.encrypted_content ?? result.page_content ?? result.snippet ?? ""}\n`);
+					// dont include the content in the response to save context
+					// parts.push(`### ${result.title}\n${result.url}\n${result.encrypted_content ?? result.page_content ?? result.snippet ?? ""}\n`);
+					parts.push(`- ${result.title}\n  ${result.url}\n`);
 					searchResults.push({ title: result.title, url: result.url });
 				}
 			}
