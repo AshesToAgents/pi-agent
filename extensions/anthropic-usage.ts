@@ -1,0 +1,298 @@
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { Text, matchesKey } from "@mariozechner/pi-tui";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
+
+interface UsageWindow {
+	utilization: number;
+	resets_at: string | null;
+}
+
+interface UsageResponse {
+	five_hour: UsageWindow | null;
+	seven_day: UsageWindow | null;
+	seven_day_opus: UsageWindow | null;
+	seven_day_sonnet: UsageWindow | null;
+	extra_usage: {
+		is_enabled: boolean;
+		monthly_limit: number;
+		used_credits: number;
+		utilization: number;
+	} | null;
+}
+
+interface CachedUsage {
+	data: UsageResponse;
+	fetchedAt: number;
+}
+
+const CACHE_DIR = join(process.env.HOME ?? "~", ".pi", "agent", "data");
+const CACHE_FILE = join(CACHE_DIR, "anthropic-usage-cache.json");
+const COOLDOWN_MS = 60_000;
+
+let lastFetchTime = 0;
+let lastUsageData: UsageResponse | null = null;
+
+function loadCache(): void {
+	try {
+		const raw = readFileSync(CACHE_FILE, "utf-8");
+		const cached: CachedUsage = JSON.parse(raw);
+		lastUsageData = cached.data;
+		lastFetchTime = cached.fetchedAt;
+	} catch {
+		// No cache or invalid — that's fine
+	}
+}
+
+function saveCache(): void {
+	if (!lastUsageData) return;
+	try {
+		mkdirSync(CACHE_DIR, { recursive: true });
+		writeFileSync(CACHE_FILE, JSON.stringify({ data: lastUsageData, fetchedAt: lastFetchTime } satisfies CachedUsage));
+	} catch {
+		// Non-critical
+	}
+}
+
+function isAnthropicModel(ctx: ExtensionContext): boolean {
+	return ctx.model?.provider === "anthropic";
+}
+
+function isOAuthKey(key: string): boolean {
+	return key.startsWith("sk-ant-oat");
+}
+
+async function fetchUsage(ctx: ExtensionContext): Promise<UsageResponse | null> {
+	if (!isAnthropicModel(ctx)) return null;
+
+	const apiKey = await ctx.modelRegistry.getApiKey(ctx.model!);
+	if (!apiKey) {
+		ctx.ui.notify("No API key configured for Anthropic", "error");
+		return null;
+	}
+	if (!isOAuthKey(apiKey)) {
+		ctx.ui.notify("Anthropic usage requires OAuth authentication (sk-ant-oat-* key)", "warning");
+		return null;
+	}
+
+	try {
+		const res = await fetch("https://api.anthropic.com/api/oauth/usage", {
+			headers: {
+				Authorization: `Bearer ${apiKey}`,
+				"anthropic-beta": "oauth-2025-04-20",
+				"Content-Type": "application/json",
+			},
+		});
+		if (!res.ok) {
+			const status = res.status;
+			if (status === 429) {
+				ctx.ui.notify("Rate limited while fetching usage data", "warning");
+			} else {
+				ctx.ui.notify(`Usage fetch failed: HTTP ${status}`, "error");
+			}
+			return null;
+		}
+		const data = (await res.json()) as UsageResponse;
+		lastUsageData = data;
+		lastFetchTime = Date.now();
+		saveCache();
+		return data;
+	} catch (e: any) {
+		ctx.ui.notify(`Usage fetch error: ${e.message}`, "error");
+		return null;
+	}
+}
+
+function formatResetTime(resetsAt: string | null): string {
+	if (!resetsAt) return "";
+	const d = new Date(resetsAt);
+	const now = new Date();
+	const diffMs = d.getTime() - now.getTime();
+
+	if (diffMs < 0) return "(expired)";
+
+	if (diffMs < 24 * 60 * 60 * 1000) {
+		return `(resets ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })})`;
+	}
+
+	return `(resets ${d.toLocaleDateString([], { weekday: "short" })}, ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })})`;
+}
+
+function progressBar(pct: number, width: number = 10): string {
+	const clamped = Math.max(0, Math.min(100, pct));
+	const filled = Math.round((clamped / 100) * width);
+	return "▓".repeat(filled) + "░".repeat(width - filled);
+}
+
+function colorForPct(pct: number, theme: any): (text: string) => string {
+	if (pct > 80) return (t: string) => theme.fg("error", t);
+	if (pct >= 50) return (t: string) => theme.fg("warning", t);
+	return (t: string) => theme.fg("success", t);
+}
+
+function widgetLine(data: UsageResponse, theme: any): string[] {
+	const parts: string[] = [];
+
+	if (data.five_hour) {
+		const pct = Math.round(data.five_hour.utilization);
+		const color = colorForPct(pct, theme);
+		parts.push(color(`5hr: ${pct}%`));
+	}
+	if (data.seven_day) {
+		const pct = Math.round(data.seven_day.utilization);
+		const color = colorForPct(pct, theme);
+		parts.push(color(`7d: ${pct}%`));
+	}
+
+	if (parts.length === 0) return [];
+	return [`⚡ ${parts.join(theme.fg("dim", " │ "))}`];
+}
+
+function updateWidget(ctx: ExtensionContext) {
+	if (!ctx.hasUI) return;
+	if (!lastUsageData) {
+		ctx.ui.setWidget("anthropic-usage", undefined);
+		return;
+	}
+	ctx.ui.setWidget("anthropic-usage", (tui, theme) => {
+		const lines = widgetLine(lastUsageData!, theme);
+		if (lines.length === 0) return new Text("", 0, 0);
+		return new Text(lines[0], 0, 0);
+	});
+}
+
+async function fetchAndUpdateWidget(ctx: ExtensionContext, forceFetch = false) {
+	if (!isAnthropicModel(ctx)) {
+		ctx.ui.setWidget("anthropic-usage", undefined);
+		return;
+	}
+
+	if (!forceFetch && Date.now() - lastFetchTime < COOLDOWN_MS && lastUsageData) {
+		updateWidget(ctx);
+		return;
+	}
+
+	const data = await fetchUsage(ctx);
+	if (data) {
+		updateWidget(ctx);
+	} else if (lastUsageData) {
+		updateWidget(ctx);
+	}
+}
+
+export default function (pi: ExtensionAPI) {
+	// Load disk cache on extension init
+	loadCache();
+
+	// /usage command — rich display
+	pi.registerCommand("usage", {
+		description: "Show Anthropic API usage and rate limits",
+		handler: async (_args, ctx) => {
+			if (!isAnthropicModel(ctx)) {
+				ctx.ui.notify("Only Anthropic models supported for usage tracking", "warning");
+				return;
+			}
+
+			const data = await fetchUsage(ctx);
+			if (!data && !lastUsageData) return;
+
+			const displayData = data ?? lastUsageData!;
+			const isStale = !data && !!lastUsageData;
+
+			// Also update widget with fresh data
+			updateWidget(ctx);
+
+			await ctx.ui.custom<void>((tui, theme, _kb, done) => {
+				const lines: string[] = [];
+
+				let title = theme.bold(theme.fg("accent", "Anthropic API Usage"));
+				if (isStale) {
+					const ago = Math.round((Date.now() - lastFetchTime) / 60_000);
+					title += theme.fg("dim", `  (cached ${ago}m ago)`);
+				}
+				lines.push(title);
+				lines.push(theme.fg("dim", "─".repeat(30)));
+
+				if (displayData.five_hour) {
+					const pct = Math.round(displayData.five_hour.utilization);
+					const color = colorForPct(pct, theme);
+					const bar = color(progressBar(pct));
+					const reset = theme.fg("dim", formatResetTime(displayData.five_hour.resets_at));
+					lines.push(`5-Hour:   ${bar}  ${color(pct + "%")}  ${reset}`);
+				}
+
+				if (displayData.seven_day) {
+					const pct = Math.round(displayData.seven_day.utilization);
+					const color = colorForPct(pct, theme);
+					const bar = color(progressBar(pct));
+					const reset = theme.fg("dim", formatResetTime(displayData.seven_day.resets_at));
+					lines.push(`7-Day:    ${bar}  ${color(pct + "%")}  ${reset}`);
+				}
+
+				if (displayData.seven_day_sonnet) {
+					const pct = Math.round(displayData.seven_day_sonnet.utilization);
+					const color = colorForPct(pct, theme);
+					const bar = color(progressBar(pct));
+					const reset = theme.fg("dim", formatResetTime(displayData.seven_day_sonnet.resets_at));
+					lines.push(`Sonnet:   ${bar}  ${color(pct + "%")}  ${reset}`);
+				}
+
+				if (displayData.seven_day_opus) {
+					const pct = Math.round(displayData.seven_day_opus.utilization);
+					const color = colorForPct(pct, theme);
+					const bar = color(progressBar(pct));
+					const reset = theme.fg("dim", formatResetTime(displayData.seven_day_opus.resets_at));
+					lines.push(`Opus:     ${bar}  ${color(pct + "%")}  ${reset}`);
+				}
+
+				if (displayData.extra_usage) {
+					const used = displayData.extra_usage.used_credits ?? 0;
+					const limit = displayData.extra_usage.monthly_limit ?? 0;
+					const enabled = displayData.extra_usage.is_enabled;
+					const label = enabled ? theme.fg("muted", `$${used.toFixed(2)} / $${limit.toFixed(2)}`) : theme.fg("dim", "disabled");
+					lines.push(`Extra:    ${label}`);
+				}
+
+				lines.push("");
+				lines.push(theme.fg("dim", "Press Escape to close"));
+
+				const text = new Text(lines.join("\n"), 1, 1);
+
+				return {
+					render: (width: number) => text.render(width),
+					invalidate: () => text.invalidate(),
+					handleInput: (data: string) => {
+						if (matchesKey(data, "escape") || matchesKey(data, "enter") || data === "q") {
+							done();
+						}
+					},
+				};
+			});
+		},
+	});
+
+	// Session start — show cached widget immediately, then try to fetch fresh
+	pi.on("session_start", async (_event, ctx) => {
+		if (isAnthropicModel(ctx)) {
+			if (lastUsageData) updateWidget(ctx);
+			await fetchAndUpdateWidget(ctx, true);
+		}
+	});
+
+	// Agent end — refresh widget with cooldown
+	pi.on("agent_end", async (_event, ctx) => {
+		if (isAnthropicModel(ctx)) {
+			await fetchAndUpdateWidget(ctx);
+		}
+	});
+
+	// Model select — show/hide widget
+	pi.on("model_select", async (event, ctx) => {
+		if (event.model.provider === "anthropic") {
+			await fetchAndUpdateWidget(ctx);
+		} else {
+			lastUsageData = null;
+			ctx.ui.setWidget("anthropic-usage", undefined);
+		}
+	});
+}

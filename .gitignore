@@ -5,3 +5,4 @@ auth.json
 bin/
 settings.json
 sessions/
+data/
