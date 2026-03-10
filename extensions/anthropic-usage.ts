@@ -32,6 +32,7 @@ const COOLDOWN_MS = 60_000;
 
 let lastFetchTime = 0;
 let lastUsageData: UsageResponse | null = null;
+let lastFetchFailed = false;
 
 function loadCache(): void {
 	try {
@@ -62,16 +63,18 @@ function isOAuthKey(key: string): boolean {
 	return key.startsWith("sk-ant-oat");
 }
 
-async function fetchUsage(ctx: ExtensionContext): Promise<UsageResponse | null> {
+async function fetchUsage(ctx: ExtensionContext, quiet = false): Promise<UsageResponse | null> {
 	if (!isAnthropicModel(ctx)) return null;
 
 	const apiKey = await ctx.modelRegistry.getApiKey(ctx.model!);
 	if (!apiKey) {
-		ctx.ui.notify("No API key configured for Anthropic", "error");
+		if (!quiet) ctx.ui.notify("No API key configured for Anthropic", "warning");
+		lastFetchFailed = true;
 		return null;
 	}
 	if (!isOAuthKey(apiKey)) {
-		ctx.ui.notify("Anthropic usage requires OAuth authentication (sk-ant-oat-* key)", "warning");
+		if (!quiet) ctx.ui.notify("Usage requires OAuth key (sk-ant-oat-*)", "warning");
+		lastFetchFailed = true;
 		return null;
 	}
 
@@ -84,21 +87,22 @@ async function fetchUsage(ctx: ExtensionContext): Promise<UsageResponse | null> 
 			},
 		});
 		if (!res.ok) {
-			const status = res.status;
-			if (status === 429) {
-				ctx.ui.notify("Rate limited while fetching usage data", "warning");
-			} else {
-				ctx.ui.notify(`Usage fetch failed: HTTP ${status}`, "error");
+			if (!quiet) {
+				const msg = res.status === 429 ? "Rate limited while fetching usage" : `Usage fetch failed: HTTP ${res.status}`;
+				ctx.ui.notify(msg, "warning");
 			}
+			lastFetchFailed = true;
 			return null;
 		}
+		lastFetchFailed = false;
 		const data = (await res.json()) as UsageResponse;
 		lastUsageData = data;
 		lastFetchTime = Date.now();
 		saveCache();
 		return data;
 	} catch (e: any) {
-		ctx.ui.notify(`Usage fetch error: ${e.message}`, "error");
+		if (!quiet) ctx.ui.notify(`Usage fetch error: ${e.message}`, "warning");
+		lastFetchFailed = true;
 		return null;
 	}
 }
@@ -145,7 +149,9 @@ function widgetLine(data: UsageResponse, theme: any): string[] {
 	}
 
 	if (parts.length === 0) return [];
-	return [`⚡ ${parts.join(theme.fg("dim", " │ "))}`];
+	let line = `⚡ ${parts.join(theme.fg("dim", " │ "))}`;
+	if (lastFetchFailed) line += theme.fg("dim", " (cached)");
+	return [line];
 }
 
 function updateWidget(ctx: ExtensionContext) {
@@ -172,7 +178,7 @@ async function fetchAndUpdateWidget(ctx: ExtensionContext, forceFetch = false) {
 		return;
 	}
 
-	const data = await fetchUsage(ctx);
+	const data = await fetchUsage(ctx, true);
 	if (data) {
 		updateWidget(ctx);
 	} else if (lastUsageData) {
