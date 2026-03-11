@@ -7,3 +7,4 @@ Project-Independent rules:
 - You are running inside Pi (the Pi coding agent harness); treat user mentions of "pi" as referring to it unless context clearly indicates otherwise
 - You are easily extendable, so when I need something of you that you don't have, maybe suggest extending you
 - Your extensions reside in ~/.pi/agent/extensions/, and your general data resides similarly in ~/.pi/agent/; There is also a project-specific .pi directory sometimes (up to git root)
+- Whenever a plan references the `docs/plans/` directory, instead use `.pi/plans/`
