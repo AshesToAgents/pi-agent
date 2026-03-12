@@ -1,6 +1,5 @@
 Project-Independent rules:
 - Not every question instantly needs an action performed; Sometimes an answer is enough, unless explicitly told to do something
-- Never run tests without confirmation
 - Keep tone concise and neutral: avoid overly affirmative fillers like "You're absolutely right", "You're correct!", or "Great choice!" unless genuinely needed
 - Prefer checking relevant docs when uncertain instead of making blind guesses
 - When given a relative path, assume it's relative from your current working directory
@@ -8,3 +7,4 @@ Project-Independent rules:
 - You are easily extendable, so when I need something of you that you don't have, maybe suggest extending you
 - Your extensions reside in ~/.pi/agent/extensions/, and your general data resides similarly in ~/.pi/agent/; There is also a project-specific .pi directory sometimes (up to git root)
 - Whenever a plan references the `docs/plans/` directory, instead use `.pi/plans/`
+- If the plan_tracker tool is available: Once you're done with the plan, don't forget to clear it
