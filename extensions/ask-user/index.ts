@@ -23,6 +23,8 @@ function uniqueOtherLabel(options: string[]): string {
 }
 
 export default function askUserExtension(pi: ExtensionAPI) {
+	if (process.env.PI_NO_ASK_USER) return;
+
 	pi.registerTool({
 		name: "askUser",
 		label: "Ask User",
