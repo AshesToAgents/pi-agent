@@ -149,40 +149,38 @@ function widgetLine(data: UsageResponse, theme: any): string[] {
 	}
 
 	if (parts.length === 0) return [];
-	let line = `⚡ ${parts.join(theme.fg("dim", " │ "))}`;
+	let line = `Usage: ${parts.join(theme.fg("dim", " │ "))}`;
 	if (lastFetchFailed) line += theme.fg("dim", " (cached)");
 	return [line];
 }
 
-function updateWidget(ctx: ExtensionContext) {
+function updateStatus(ctx: ExtensionContext) {
 	if (!ctx.hasUI) return;
 	if (!lastUsageData) {
-		ctx.ui.setWidget("anthropic-usage", undefined);
+		ctx.ui.setStatus("anthropic-usage", undefined);
 		return;
 	}
-	ctx.ui.setWidget("anthropic-usage", (tui, theme) => {
-		const lines = widgetLine(lastUsageData!, theme);
-		if (lines.length === 0) return new Text("", 0, 0);
-		return new Text(lines[0], 0, 0);
-	});
+	const theme = ctx.ui.theme;
+	const lines = widgetLine(lastUsageData!, theme);
+	ctx.ui.setStatus("anthropic-usage", lines.length > 0 ? lines[0] : undefined);
 }
 
-async function fetchAndUpdateWidget(ctx: ExtensionContext, forceFetch = false) {
+async function fetchAndUpdateStatus(ctx: ExtensionContext, forceFetch = false) {
 	if (!isAnthropicModel(ctx)) {
-		ctx.ui.setWidget("anthropic-usage", undefined);
+		ctx.ui.setStatus("anthropic-usage", undefined);
 		return;
 	}
 
 	if (!forceFetch && Date.now() - lastFetchTime < COOLDOWN_MS && lastUsageData) {
-		updateWidget(ctx);
+		updateStatus(ctx);
 		return;
 	}
 
 	const data = await fetchUsage(ctx, true);
 	if (data) {
-		updateWidget(ctx);
+		updateStatus(ctx);
 	} else if (lastUsageData) {
-		updateWidget(ctx);
+		updateStatus(ctx);
 	}
 }
 
@@ -205,8 +203,8 @@ export default function (pi: ExtensionAPI) {
 			const displayData = data ?? lastUsageData!;
 			const isStale = !data && !!lastUsageData;
 
-			// Also update widget with fresh data
-			updateWidget(ctx);
+			// Also update status with fresh data
+			updateStatus(ctx);
 
 			await ctx.ui.custom<void>((tui, theme, _kb, done) => {
 				const lines: string[] = [];
@@ -277,28 +275,28 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	// Session start — show cached widget immediately, then try to fetch fresh
+	// Session start — show cached status immediately, then try to fetch fresh
 	pi.on("session_start", async (_event, ctx) => {
 		if (isAnthropicModel(ctx)) {
-			if (lastUsageData) updateWidget(ctx);
-			await fetchAndUpdateWidget(ctx, true);
+			if (lastUsageData) updateStatus(ctx);
+			await fetchAndUpdateStatus(ctx, true);
 		}
 	});
 
-	// Agent end — refresh widget with cooldown
+	// Agent end — refresh status with cooldown
 	pi.on("agent_end", async (_event, ctx) => {
 		if (isAnthropicModel(ctx)) {
-			await fetchAndUpdateWidget(ctx);
+			await fetchAndUpdateStatus(ctx);
 		}
 	});
 
-	// Model select — show/hide widget
+	// Model select — show/hide status
 	pi.on("model_select", async (event, ctx) => {
 		if (event.model.provider === "anthropic") {
-			await fetchAndUpdateWidget(ctx);
+			await fetchAndUpdateStatus(ctx);
 		} else {
 			lastUsageData = null;
-			ctx.ui.setWidget("anthropic-usage", undefined);
+			ctx.ui.setStatus("anthropic-usage", undefined);
 		}
 	});
 }
