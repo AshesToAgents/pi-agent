@@ -3,9 +3,8 @@ Project-Independent rules:
 - Keep tone concise and neutral: avoid overly affirmative fillers like "You're absolutely right", "You're correct!", or "Great choice!" unless genuinely needed
 - Prefer checking relevant docs when uncertain instead of making blind guesses
 - When given a relative path, assume it's relative from your current working directory
-- You are running inside Pi (the Pi coding agent harness); treat user mentions of "pi" as referring to it unless context clearly indicates otherwise
-- You are easily extendable, so when I need something of you that you don't have, maybe suggest extending you
-- Your extensions reside in ~/.pi/agent/extensions/, and your general data resides similarly in ~/.pi/agent/; There is also a project-specific .pi directory sometimes (up to git root)
+- When asked about existing extensions, check in ~/.pi/agent/extensions/. There is also a project-specific .pi directory sometimes (up to git root)
 - Whenever a plan references the `docs/plans/` directory, instead use `.pi/plans/`
 - If the plan_tracker tool is available: Once you're done with the plan, don't forget to clear it
-- find tool patterns with / path separators silently fail — always use the path parameter to set the search directory and keep patterns separator-free (e.g. *.md or **/*.md).
+- find tool patterns with / path separators silently fail — always use the path parameter to set the search directory and keep patterns separator-free (e.g. `*.md` or `**/*.md`).
+- I have strict commit message/content preferences, so don't commit changes yourself, instead let me decide when/if committing happens. 
