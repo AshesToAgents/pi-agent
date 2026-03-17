@@ -50,7 +50,7 @@ const buildTranscript = (entries: SessionEntry[]): TranscriptMessage[] => {
 		if (role === "toolResult" && toolName === "askUser") {
 			let text = extractText(content);
 			if (text) {
-				text = text.replace(/^User selected option:\s*/i, "");
+				text = text.replace(/^User selected (option|custom answer):\s*/i, "");
 				messages.push({ label: "You", text });
 			}
 			continue;
