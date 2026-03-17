@@ -678,6 +678,7 @@ export default function (pi: ExtensionAPI) {
 		label: "Subagent Agents",
 		description:
 			"List available subagents. Defaults to a quick overview (name + description). Use detail=\"full\" for model/tools/source/path.",
+		promptSnippet: "List available subagents. Defaults to a quick overview (name + description). Use detail=\"full\" for model/tools/source/path.",
 		parameters: SubagentAgentsParams,
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const agentScope: AgentScope = params.agentScope ?? DEFAULT_AGENT_SCOPE;
@@ -797,6 +798,7 @@ export default function (pi: ExtensionAPI) {
 			'Default agent scope is "both" (user + project agents).',
 			'Use subagent_agents for quick discovery (name + description) or full metadata.',
 		].join(" "),
+		promptSnippet: "Delegate tasks to specialized subagents with isolated context. Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder). Default agent scope is \"both\" (user + project agents). Use subagent_agents for quick discovery (name + description) or full metadata.",
 		parameters: SubagentParams,
 
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
