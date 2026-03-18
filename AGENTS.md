@@ -7,4 +7,4 @@ Project-Independent rules:
 - Whenever a plan references the `docs/plans/` directory, instead use `.pi/plans/`
 - If the plan_tracker tool is available: Once you're done with the plan, don't forget to clear it
 - find tool patterns with / path separators silently fail — always use the path parameter to set the search directory and keep patterns separator-free (e.g. `*.md` or `**/*.md`).
-- I have strict commit message/content preferences, so don't commit changes yourself, instead let me decide when/if committing happens. 
+- Always use the commit tool instead of commiting with git directly
