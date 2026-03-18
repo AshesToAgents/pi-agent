@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { type ExtensionAPI, VERSION } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 
 function fmt(n: number): string {
@@ -21,7 +21,7 @@ export default function (pi: ExtensionAPI) {
 					const branch = footerData.getGitBranch();
 					const branchStr = branch ? ` (${branch})` : "";
 					const cwd = process.cwd().replace(process.env.HOME ?? "", "~");
-					const left = theme.fg("dim", `${cwd}${branchStr}`);
+					const left = theme.fg("dim", `pi ${VERSION}`) + "  " + theme.fg("accent", `${cwd}${branchStr}`);
 
 					const usage = ctx.getContextUsage();
 					const tokens = usage?.tokens ?? 0;
@@ -32,7 +32,7 @@ export default function (pi: ExtensionAPI) {
 
 					const model = ctx.model?.id ?? "no-model";
 					const thinking = pi.getThinkingLevel();
-					const right = theme.fg("muted", `${model} · ${thinking}`);
+					const right = theme.fg("muted", `${model} (${thinking})`);
 
 					const gap1 = " ".repeat(Math.max(2, width - visibleWidth(left) - visibleWidth(contextStr) - visibleWidth(right) - 4));
 					const gap2 = "  ";
