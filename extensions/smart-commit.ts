@@ -3,8 +3,8 @@
  *
  * Registers a `commit` tool the LLM can use to commit staged/unstaged changes.
  * Before committing:
- *   1. Shows the proposed commit message in an editable input for the user to adjust
- *   2. Lets the user confirm, edit, or skip the commit entirely
+ *   1. Shows the proposed commit message in an editor for the user to adjust
+ *   2. Save to commit, Escape to skip
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -63,26 +63,13 @@ export default function (pi: ExtensionAPI) {
 			const modelName = ctx.model?.name ?? "unknown model";
 			const template = `${params.message}\n\nCo-authored-by: ${modelName}`;
 			const editedMessage = await ctx.ui.editor(
-				`Review commit message (save to confirm, clear to skip):\n${diffSummary ? `\n${diffSummary}` : ""}`,
+				`Review commit message (save to commit, Escape to skip):\n${diffSummary ? `\n${diffSummary}` : ""}`,
 				template
 			);
 
 			if (!editedMessage || !editedMessage.trim()) {
 				return {
 					content: [{ type: "text", text: "Commit skipped by user." }],
-					details: { skipped: true, reason: "user" },
-				};
-			}
-
-			// Confirm before committing
-			const confirmed = await ctx.ui.confirm(
-				"Commit?",
-				`Message: ${editedMessage.trim().split("\n")[0]}${editedMessage.trim().includes("\n") ? " ..." : ""}`
-			);
-
-			if (!confirmed) {
-				return {
-					content: [{ type: "text", text: "Commit cancelled by user." }],
 					details: { skipped: true, reason: "user" },
 				};
 			}
