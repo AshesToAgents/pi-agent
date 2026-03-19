@@ -82,8 +82,8 @@ export default function (pi: ExtensionAPI) {
 			const hash = hashResult.stdout.trim();
 
 			return {
-				content: [{ type: "text", text: `Committed ${hash}: ${finalMessage.split("\n")[0]}` }],
-				details: { committed: true, message: finalMessage, hash },
+				content: [{ type: "text", text: `Committed ${hash}` }],
+				details: { committed: true, hash },
 			};
 		},
 	});
