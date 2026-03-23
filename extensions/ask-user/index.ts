@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
+import { DynamicBorder } from "@mariozechner/pi-coding-agent";
+import { Container, Input, type SelectItem, SelectList, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 
 const OTHER_LABEL_BASE = "Other (enter custom text)";
@@ -11,6 +12,11 @@ type AskUserDetails = {
 	options: string[];
 	allowCustom: boolean;
 };
+
+type SelectResult =
+	| { type: "selected"; value: string }
+	| { type: "edit"; value: string }
+	| null;
 
 function uniqueOtherLabel(options: string[]): string {
 	let label = OTHER_LABEL_BASE;
@@ -92,9 +98,57 @@ export default function askUserExtension(pi: ExtensionAPI) {
 
 			const otherLabel = uniqueOtherLabel(options);
 			const selectable = allowCustom ? [...options, otherLabel] : [...options];
-			const choice = await ctx.ui.select(question, selectable);
 
-			if (!choice) {
+			// Custom select with 'e' key support to edit an option
+			const selectResult = await ctx.ui.custom<SelectResult>((tui, theme, _kb, done) => {
+				const container = new Container();
+
+				container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
+				container.addChild(new Text(theme.fg("accent", ` ${question}`), 0, 0));
+				container.addChild(new Text("", 0, 0)); // spacer
+
+				const items: SelectItem[] = selectable.map((opt) => ({
+					value: opt,
+					label: opt,
+				}));
+
+				const selectList = new SelectList(items, Math.min(items.length, 15), {
+					selectedPrefix: (t) => theme.fg("accent", t),
+					selectedText: (t) => theme.fg("accent", t),
+					description: (t) => theme.fg("muted", t),
+					scrollInfo: (t) => theme.fg("dim", t),
+					noMatch: (t) => theme.fg("warning", t),
+				});
+				selectList.onSelect = (item) => done({ type: "selected", value: item.value });
+				selectList.onCancel = () => done(null);
+				container.addChild(selectList);
+
+				const hints = ["↑↓ navigate", "enter select", "esc cancel"];
+				if (allowCustom) {
+					hints.push("e edit option");
+				}
+				container.addChild(new Text(theme.fg("dim", ` ${hints.join(" • ")}`), 0, 0));
+				container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
+
+				return {
+					render: (w) => container.render(w),
+					invalidate: () => container.invalidate(),
+					handleInput: (data) => {
+						// Intercept 'e' key to edit the highlighted option
+						if (allowCustom && data === "e") {
+							const selected = selectList.getSelectedItem();
+							if (selected && selected.value !== otherLabel) {
+								done({ type: "edit", value: selected.value });
+								return;
+							}
+						}
+						selectList.handleInput(data);
+						tui.requestRender();
+					},
+				};
+			});
+
+			if (!selectResult) {
 				pi.events.emit("ask-user:canceled", {
 					toolCallId,
 					question,
@@ -110,60 +164,64 @@ export default function askUserExtension(pi: ExtensionAPI) {
 				};
 			}
 
-			if (allowCustom && choice === otherLabel) {
-				while (true) {
-					const custom = await ctx.ui.input(question, "Enter your custom answer");
-					if (custom === undefined) {
-						pi.events.emit("ask-user:canceled", {
-							toolCallId,
-							question,
-							options,
-							allowCustom,
-							stage: "custom-input",
-						});
+			// Direct selection of a regular option
+			if (selectResult.type === "selected" && selectResult.value !== otherLabel) {
+				pi.events.emit("ask-user:answered", {
+					toolCallId,
+					question,
+					selected: selectResult.value,
+					isCustom: false,
+					options,
+					allowCustom,
+				});
 
-						return {
-							content: [{ type: "text", text: "Error: custom answer entry was canceled by the user." }],
-							details: { ...baseDetails, isCustom: true },
-							isError: true,
-						};
-					}
+				return {
+					content: [{ type: "text", text: `User selected option: ${selectResult.value}` }],
+					details: { ...baseDetails, selected: selectResult.value, isCustom: false },
+				};
+			}
 
-					const trimmed = custom.trim();
-					if (!trimmed) {
-						ctx.ui.notify("Custom answer cannot be empty. Please enter a value.", "warning");
-						continue;
-					}
+			// Custom input mode: either "Other" was selected or 'e' was pressed
+			const prefill = selectResult.type === "edit" ? selectResult.value : "";
 
-					pi.events.emit("ask-user:answered", {
+			while (true) {
+				const custom = await showCustomInput(ctx, question, prefill);
+				if (custom === undefined) {
+					pi.events.emit("ask-user:canceled", {
 						toolCallId,
 						question,
-						selected: trimmed,
-						isCustom: true,
 						options,
 						allowCustom,
+						stage: "custom-input",
 					});
 
 					return {
-						content: [{ type: "text", text: `User selected custom answer: ${trimmed}` }],
-						details: { ...baseDetails, selected: trimmed, isCustom: true },
+						content: [{ type: "text", text: "Error: custom answer entry was canceled by the user." }],
+						details: { ...baseDetails, isCustom: true },
+						isError: true,
 					};
 				}
+
+				const trimmed = custom.trim();
+				if (!trimmed) {
+					ctx.ui.notify("Custom answer cannot be empty. Please enter a value.", "warning");
+					continue;
+				}
+
+				pi.events.emit("ask-user:answered", {
+					toolCallId,
+					question,
+					selected: trimmed,
+					isCustom: true,
+					options,
+					allowCustom,
+				});
+
+				return {
+					content: [{ type: "text", text: `User selected custom answer: ${trimmed}` }],
+					details: { ...baseDetails, selected: trimmed, isCustom: true },
+				};
 			}
-
-			pi.events.emit("ask-user:answered", {
-				toolCallId,
-				question,
-				selected: choice,
-				isCustom: false,
-				options,
-				allowCustom,
-			});
-
-			return {
-				content: [{ type: "text", text: `User selected option: ${choice}` }],
-				details: { ...baseDetails, selected: choice, isCustom: false },
-			};
 		},
 		renderCall(args, theme) {
 			const options = Array.isArray(args.options) ? args.options.length : 0;
@@ -202,5 +260,52 @@ export default function askUserExtension(pi: ExtensionAPI) {
 			const contentText = result.content.find((c) => c.type === "text");
 			return new Text(contentText?.type === "text" ? contentText.text : "askUser completed", 0, 0);
 		},
+	});
+}
+
+/** Show a custom input dialog with optional pre-filled text. Returns undefined on cancel. */
+async function showCustomInput(
+	ctx: { ui: { custom: <T>(factory: (tui: any, theme: any, kb: any, done: (value: T) => void) => any, opts?: any) => Promise<T> } },
+	title: string,
+	prefill: string,
+): Promise<string | undefined> {
+	return ctx.ui.custom<string | undefined>((tui, theme, _kb, done) => {
+		const container = new Container();
+
+		container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
+		container.addChild(new Text(theme.fg("accent", ` ${title}`), 0, 0));
+		container.addChild(new Text("", 0, 0)); // spacer
+
+		const input = new Input();
+		input.onSubmit = (value) => done(value);
+		input.onEscape = () => done(undefined);
+
+		if (prefill) {
+			input.setValue(prefill);
+			// setValue clamps cursor to 0; move it to end of text
+			(input as any).cursor = prefill.length;
+		}
+
+		container.addChild(input);
+
+		container.addChild(new Text("", 0, 0)); // spacer
+		container.addChild(new Text(theme.fg("dim", " enter submit • esc cancel"), 0, 0));
+		container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
+
+		return {
+			render: (w) => container.render(w),
+			invalidate: () => container.invalidate(),
+			handleInput: (data) => {
+				input.handleInput(data);
+				tui.requestRender();
+			},
+			// Focusable: propagate to input for IME cursor positioning
+			get focused() {
+				return input.focused;
+			},
+			set focused(value: boolean) {
+				input.focused = value;
+			},
+		};
 	});
 }
