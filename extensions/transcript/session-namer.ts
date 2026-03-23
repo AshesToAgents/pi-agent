@@ -35,8 +35,8 @@ function transcriptToText(transcript: TranscriptMessage[]): string {
 }
 
 const NAMING_PROMPT = [
-	"Generate a short, descriptive name for this coding session based on the conversation below.",
-	"The name should be 3-7 words that capture the main topic or task.",
+	"Generate a descriptive name for this coding session based on the conversation below.",
+	"The name should be 5-12 words that capture the main topic, task, and key details.",
 	"Return ONLY the session name, nothing else. No quotes, no explanation.",
 	"",
 	"<conversation>",
