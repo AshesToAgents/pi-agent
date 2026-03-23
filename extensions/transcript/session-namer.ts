@@ -51,19 +51,19 @@ const NAMING_PROMPT = [
 async function generateSessionName(
 	transcript: TranscriptMessage[],
 	modelRegistry: any,
-): Promise<string | null> {
+): Promise<string> {
 	const modelSpec = getConfiguredModel();
-	if (!modelSpec) return null;
+	if (!modelSpec) throw new Error("No session namer model configured. Run /session-namer-model first.");
 
 	const [provider, ...idParts] = modelSpec.split("/");
 	const modelId = idParts.join("/");
-	if (!provider || !modelId) return null;
+	if (!provider || !modelId) throw new Error(`Invalid model spec: ${modelSpec}`);
 
 	const model = modelRegistry?.find(provider, modelId);
-	if (!model) return null;
+	if (!model) throw new Error(`Model not found: ${modelSpec}`);
 
 	const apiKey = await modelRegistry?.getApiKey(model);
-	if (!apiKey) return null;
+	if (!apiKey) throw new Error(`No API key for ${modelSpec}`);
 
 	const conversationText = transcriptToText(transcript);
 	const prompt = `${NAMING_PROMPT}${conversationText}\n</conversation>`;
@@ -88,7 +88,8 @@ async function generateSessionName(
 		.join("")
 		.trim();
 
-	return name && name.length > 0 && name.length < 100 ? name : null;
+	if (!name || name.length === 0) throw new Error("Model returned empty response");
+	return name;
 }
 
 const SELECT_LIST_THEME = (theme: any) => ({
@@ -224,14 +225,10 @@ export function registerSessionNamer(pi: ExtensionAPI) {
 
 			try {
 				const generated = await generateSessionName(transcript, ctx.modelRegistry);
-				if (generated) {
-					pi.setSessionName(generated);
-					ctx.ui.notify(`Session renamed: ${generated}`, "success");
-				} else {
-					ctx.ui.notify("Failed to generate session name", "warning");
-				}
+				pi.setSessionName(generated);
+				ctx.ui.notify(`Session renamed: ${generated}`, "success");
 			} catch (e: any) {
-				ctx.ui.notify(`Error: ${e.message ?? e}`, "error");
+				ctx.ui.notify(e.message ?? String(e), "error");
 			}
 		},
 	});
