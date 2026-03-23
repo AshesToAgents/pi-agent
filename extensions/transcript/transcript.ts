@@ -34,12 +34,12 @@ const extractText = (content: unknown): string => {
 	return parts.join("\n").trim();
 };
 
-interface TranscriptMessage {
+export interface TranscriptMessage {
 	label: string;
 	text: string;
 }
 
-const buildTranscript = (entries: SessionEntry[]): TranscriptMessage[] => {
+export const buildTranscript = (entries: SessionEntry[]): TranscriptMessage[] => {
 	const messages: TranscriptMessage[] = [];
 
 	for (const entry of entries) {
@@ -103,7 +103,7 @@ const showTranscript = async (transcript: TranscriptMessage[], ctx: ExtensionCom
 	});
 };
 
-export default function (pi: ExtensionAPI) {
+export function registerTranscript(pi: ExtensionAPI) {
 	pi.registerCommand("transcript", {
 		description: "Show session transcript (user + assistant messages only)",
 		handler: async (_args, ctx) => {
