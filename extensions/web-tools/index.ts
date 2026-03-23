@@ -104,7 +104,7 @@ export default function webToolsExtension(pi: ExtensionAPI) {
 
 				if (!options.expanded) {
 					let text = theme.fg("error", `✗ ${firstLine}`);
-					text += theme.fg("muted", ` (${keyHint("expandTools", "to expand")})`);
+					text += theme.fg("muted", ` (${keyHint("app.tools.expand", "to expand")})`);
 					return new Text(text, 0, 0);
 				}
 
@@ -124,7 +124,7 @@ export default function webToolsExtension(pi: ExtensionAPI) {
 				if (details.usage) {
 					text += theme.fg("muted", ` (${details.usage.input}→${details.usage.output} tokens)`);
 				}
-				text += theme.fg("muted", ` (${keyHint("expandTools", "to expand")})`);
+				text += theme.fg("muted", ` (${keyHint("app.tools.expand", "to expand")})`);
 				return new Text(text, 0, 0);
 			}
 
@@ -276,7 +276,7 @@ export default function webToolsExtension(pi: ExtensionAPI) {
 
 				if (!options.expanded) {
 					let text = theme.fg("error", `✗ ${firstLine}`);
-					text += theme.fg("muted", ` (${keyHint("expandTools", "to expand")})`);
+					text += theme.fg("muted", ` (${keyHint("app.tools.expand", "to expand")})`);
 					return new Text(text, 0, 0);
 				}
 
@@ -296,7 +296,7 @@ export default function webToolsExtension(pi: ExtensionAPI) {
 				if (details.usage) {
 					text += theme.fg("muted", ` (${details.usage.input}→${details.usage.output} tokens)`);
 				}
-				text += theme.fg("muted", ` (${keyHint("expandTools", "to expand")})`);
+				text += theme.fg("muted", ` (${keyHint("app.tools.expand", "to expand")})`);
 				return new Text(text, 0, 0);
 			}
 
