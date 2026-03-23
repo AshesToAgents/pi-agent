@@ -246,10 +246,12 @@ export function registerSessionNamer(pi: ExtensionAPI) {
 		if (transcript.length === 0) return;
 
 		try {
+			if (ctx.hasUI) ctx.ui.setStatus("session-namer", "Generating session name...");
 			const name = await generateSessionName(transcript, ctx.modelRegistry);
 			if (name) pi.setSessionName(name);
+			if (ctx.hasUI) ctx.ui.setStatus("session-namer", undefined);
 		} catch {
-			// Silently fail — don't block shutdown
+			if (ctx.hasUI) ctx.ui.setStatus("session-namer", undefined);
 		}
 	});
 }
