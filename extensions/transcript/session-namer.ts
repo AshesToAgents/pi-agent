@@ -35,12 +35,60 @@ function transcriptToText(transcript: TranscriptMessage[]): string {
 }
 
 const NAMING_PROMPT = [
-	"Generate a descriptive name for this coding session based on the conversation below.",
-	"The name should be 5-12 words that capture the main topic, task, and key details.",
+	"Generate a name for this coding session that would help find it among dozens of other sessions.",
+	"Focus on the SPECIFIC outcome or change — not a list of topics touched.",
+	"Bad: 'DKIM validation implementation with schema model form and tests'",
+	"Good: 'Add DKIM DNS record validation to domain settings'",
+	"Bad: 'Refactoring auth module and fixing tests'",
+	"Good: 'Extract JWT refresh logic into standalone middleware'",
+	"Use 5-12 words. Be concrete about WHAT was done, not vague about areas touched.",
 	"Return ONLY the session name, nothing else. No quotes, no explanation.",
 	"",
 	"<conversation>",
 ].join("\n");
+
+async function generateSessionName(
+	transcript: TranscriptMessage[],
+	modelRegistry: any,
+): Promise<string | null> {
+	const modelSpec = getConfiguredModel();
+	if (!modelSpec) return null;
+
+	const [provider, ...idParts] = modelSpec.split("/");
+	const modelId = idParts.join("/");
+	if (!provider || !modelId) return null;
+
+	const model = modelRegistry?.find(provider, modelId);
+	if (!model) return null;
+
+	const apiKey = await modelRegistry?.getApiKey(model);
+	if (!apiKey) return null;
+
+	const conversationText = transcriptToText(transcript);
+	const prompt = `${NAMING_PROMPT}${conversationText}\n</conversation>`;
+
+	const response = await complete(
+		model,
+		{
+			messages: [
+				{
+					role: "user" as const,
+					content: [{ type: "text" as const, text: prompt }],
+					timestamp: Date.now(),
+				},
+			],
+		},
+		{ apiKey },
+	);
+
+	const name = response.content
+		.filter((c): c is { type: "text"; text: string } => c.type === "text")
+		.map((c) => c.text)
+		.join("")
+		.trim();
+
+	return name && name.length > 0 && name.length < 100 ? name : null;
+}
 
 const SELECT_LIST_THEME = (theme: any) => ({
 	selectedPrefix: (t: string) => theme.fg("accent", t),
@@ -148,56 +196,57 @@ export function registerSessionNamer(pi: ExtensionAPI) {
 		},
 	});
 
+	// Command to rename the current session
+	pi.registerCommand("session-rename", {
+		description: "Rename session: no args = auto-generate, or provide a name",
+		handler: async (args, ctx) => {
+			const name = args.trim();
+			if (name) {
+				pi.setSessionName(name);
+				ctx.ui.notify(`Session renamed: ${name}`, "success");
+				return;
+			}
+
+			if (!getConfiguredModel()) {
+				ctx.ui.notify("No session namer model configured. Run /session-namer-model first.", "warning");
+				return;
+			}
+
+			const branch = ctx.sessionManager.getBranch();
+			const transcript = buildTranscript(branch);
+			if (transcript.length === 0) {
+				ctx.ui.notify("No messages in this session", "warning");
+				return;
+			}
+
+			ctx.ui.notify("Generating session name...", "info");
+
+			try {
+				const generated = await generateSessionName(transcript, ctx.modelRegistry);
+				if (generated) {
+					pi.setSessionName(generated);
+					ctx.ui.notify(`Session renamed: ${generated}`, "success");
+				} else {
+					ctx.ui.notify("Failed to generate session name", "warning");
+				}
+			} catch (e: any) {
+				ctx.ui.notify(`Error: ${e.message ?? e}`, "error");
+			}
+		},
+	});
+
 	// Generate session name on shutdown
 	pi.on("session_shutdown", async (_event, ctx) => {
-		// Skip if name already set
 		if (pi.getSessionName()) return;
-
-		const modelSpec = getConfiguredModel();
-		if (!modelSpec) return;
+		if (!getConfiguredModel()) return;
 
 		const branch = ctx.sessionManager.getBranch();
 		const transcript = buildTranscript(branch);
 		if (transcript.length === 0) return;
 
-		// Resolve model
-		const [provider, ...idParts] = modelSpec.split("/");
-		const modelId = idParts.join("/");
-		if (!provider || !modelId) return;
-
-		const model = ctx.modelRegistry?.find(provider, modelId);
-		if (!model) return;
-
-		const apiKey = await ctx.modelRegistry?.getApiKey(model);
-		if (!apiKey) return;
-
-		const conversationText = transcriptToText(transcript);
-		const prompt = `${NAMING_PROMPT}${conversationText}\n</conversation>`;
-
 		try {
-			const response = await complete(
-				model,
-				{
-					messages: [
-						{
-							role: "user" as const,
-							content: [{ type: "text" as const, text: prompt }],
-							timestamp: Date.now(),
-						},
-					],
-				},
-				{ apiKey },
-			);
-
-			const name = response.content
-				.filter((c): c is { type: "text"; text: string } => c.type === "text")
-				.map((c) => c.text)
-				.join("")
-				.trim();
-
-			if (name && name.length > 0 && name.length < 100) {
-				pi.setSessionName(name);
-			}
+			const name = await generateSessionName(transcript, ctx.modelRegistry);
+			if (name) pi.setSessionName(name);
 		} catch {
 			// Silently fail — don't block shutdown
 		}
