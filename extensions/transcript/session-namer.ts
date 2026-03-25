@@ -243,7 +243,7 @@ export function registerSessionNamer(pi: ExtensionAPI) {
 
 		const branch = ctx.sessionManager.getBranch();
 		const transcript = buildTranscript(branch);
-		if (transcript.length === 0) return;
+		if (transcript.length < 4) return;
 
 		try {
 			if (ctx.hasUI) ctx.ui.setStatus("session-namer", "Generating session name...");
