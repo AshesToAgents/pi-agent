@@ -3,6 +3,7 @@
 git/
 models.json
 auth.json
+web-tools.json
 bin/
 settings.json
 sessions/
