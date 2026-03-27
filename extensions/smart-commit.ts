@@ -15,22 +15,34 @@ export default function (pi: ExtensionAPI) {
 		name: "commit",
 		label: "Commit",
 		description:
-			"Stage and commit changes to git. Provide a commit message. The user will be able to review, edit, or skip the commit before it happens.",
-		promptSnippet: "Stage and commit git changes with user-reviewed commit message",
+			"Stage and commit specific files to git. You must provide explicit paths — staging all files is not allowed. The user will be able to review, edit, or skip the commit before it happens.",
+		promptSnippet: "Stage and commit specific git changes with user-reviewed commit message",
 		promptGuidelines: [
 			"Use this tool to commit changes instead of running git commit via bash.",
 			"Write clear, conventional commit messages. The user can adjust them before committing.",
+			"Always specify the exact paths to commit — never omit paths to stage everything. Only include files relevant to your changes.",
 		],
 		parameters: Type.Object({
 			message: Type.String({ description: "Proposed commit message" }),
-			paths: Type.Optional(
-				Type.Array(Type.String(), {
-					description: "Specific paths to stage and commit. If omitted, all changes are staged.",
-				})
-			),
+			paths: Type.Array(Type.String(), {
+				description: "Specific paths to stage and commit. Must be provided — staging all files is not allowed.",
+			}),
 		}),
 
 		async execute(toolCallId, params, signal, onUpdate, ctx) {
+			// Require explicit paths — never stage everything
+			if (!params.paths || params.paths.length === 0) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: "Commit rejected: you must specify explicit paths. Use `git status` or `git diff` to identify the files you changed, then pass only those.",
+						},
+					],
+					details: { skipped: true, reason: "no_paths" },
+				};
+			}
+
 			// Check if there's anything to commit
 			const statusResult = await pi.exec("git", ["status", "--porcelain"], { signal });
 			if (statusResult.code !== 0) {
@@ -90,20 +102,13 @@ export default function (pi: ExtensionAPI) {
 
 	async function stageAndCommit(
 		message: string,
-		paths: string[] | undefined,
+		paths: string[],
 		signal: AbortSignal | undefined
 	) {
-		// Stage changes
-		if (paths && paths.length > 0) {
-			const addResult = await pi.exec("git", ["add", "--", ...paths], { signal });
-			if (addResult.code !== 0) {
-				throw new Error(`Failed to stage files: ${addResult.stderr}`);
-			}
-		} else {
-			const addResult = await pi.exec("git", ["add", "-A"], { signal });
-			if (addResult.code !== 0) {
-				throw new Error(`Failed to stage changes: ${addResult.stderr}`);
-			}
+		// Stage only the specified paths
+		const addResult = await pi.exec("git", ["add", "--", ...paths], { signal });
+		if (addResult.code !== 0) {
+			throw new Error(`Failed to stage files: ${addResult.stderr}`);
 		}
 
 		// Commit
