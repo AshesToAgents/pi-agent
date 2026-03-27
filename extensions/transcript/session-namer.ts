@@ -65,8 +65,8 @@ async function generateSessionName(
 	const model = modelRegistry?.find(provider, modelId);
 	if (!model) throw new Error(`Model not found: ${modelSpec}`);
 
-	const apiKey = await modelRegistry?.getApiKey(model);
-	if (!apiKey) throw new Error(`No API key for ${modelSpec}`);
+	const auth = await modelRegistry?.getApiKeyAndHeaders(model);
+	if (!auth?.ok || !auth.apiKey) throw new Error(`No API key for ${modelSpec}`);
 
 	const conversationText = transcriptToText(transcript);
 	const prompt = `${NAMING_PROMPT}${conversationText}\n</conversation>`;
@@ -82,7 +82,7 @@ async function generateSessionName(
 				},
 			],
 		},
-		{ apiKey },
+		{ apiKey: auth.apiKey, headers: auth.headers },
 	);
 
 	const name = response.content

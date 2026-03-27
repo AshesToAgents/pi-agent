@@ -66,12 +66,13 @@ function isOAuthKey(key: string): boolean {
 async function fetchUsage(ctx: ExtensionContext, quiet = false): Promise<UsageResponse | null> {
 	if (!isAnthropicModel(ctx)) return null;
 
-	const apiKey = await ctx.modelRegistry.getApiKey(ctx.model!);
-	if (!apiKey) {
+	const auth = await ctx.modelRegistry.getApiKeyAndHeaders(ctx.model!);
+	if (!auth.ok || !auth.apiKey) {
 		if (!quiet) ctx.ui.notify("No API key configured for Anthropic", "warning");
 		lastFetchFailed = true;
 		return null;
 	}
+	const apiKey = auth.apiKey;
 	if (!isOAuthKey(apiKey)) {
 		if (!quiet) ctx.ui.notify("Usage requires OAuth key (sk-ant-oat-*)", "warning");
 		lastFetchFailed = true;
