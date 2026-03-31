@@ -72,6 +72,7 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			// Interactive: let user review and edit the message
+			pi.events.emit("smart-commit:review-started", { toolCallId, message: params.message, paths: params.paths });
 			const modelName = ctx.model?.name ?? "unknown model";
 			const template = `${params.message}\n\nCo-authored-by: ${modelName}`;
 			const editedMessage = await ctx.ui.editor(
@@ -80,6 +81,7 @@ export default function (pi: ExtensionAPI) {
 			);
 
 			if (!editedMessage || !editedMessage.trim()) {
+				pi.events.emit("smart-commit:skipped", { toolCallId, reason: "user" });
 				return {
 					content: [{ type: "text", text: "Commit skipped by user." }],
 					details: { skipped: true, reason: "user" },
@@ -93,6 +95,7 @@ export default function (pi: ExtensionAPI) {
 			const hashResult = await pi.exec("git", ["rev-parse", "--short", "HEAD"], { signal });
 			const hash = hashResult.stdout.trim();
 
+			pi.events.emit("smart-commit:committed", { toolCallId, hash, message: finalMessage });
 			return {
 				content: [{ type: "text", text: `Committed ${hash}` }],
 				details: { committed: true, hash },

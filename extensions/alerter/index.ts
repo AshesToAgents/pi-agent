@@ -2,6 +2,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 
 const APP_TITLE = "Pi Agent";
 const ASK_USER_GROUP_SUFFIX = "ask-user";
+const SMART_COMMIT_GROUP_SUFFIX = "smart-commit";
 const TASK_FINISHED_GROUP_SUFFIX = "task-finished";
 
 function safeSessionId(ctx: ExtensionContext): string {
@@ -42,6 +43,22 @@ export default function alerterExtension(pi: ExtensionAPI) {
 		runAlerter(["--remove", withGroup(ASK_USER_GROUP_SUFFIX)]);
 	};
 
+	const notifySmartCommit = () => {
+		if (!notificationsEnabled) return;
+		runAlerter([
+			"--title",
+			APP_TITLE,
+			"--message",
+			"A commit is ready for your review!",
+			"--group",
+			withGroup(SMART_COMMIT_GROUP_SUFFIX),
+		]);
+	};
+
+	const dismissSmartCommit = () => {
+		runAlerter(["--remove", withGroup(SMART_COMMIT_GROUP_SUFFIX)]);
+	};
+
 	const notifyTaskFinished = () => {
 		if (!notificationsEnabled) return;
 		runAlerter([
@@ -80,6 +97,18 @@ export default function alerterExtension(pi: ExtensionAPI) {
 
 	pi.events.on("ask-user:canceled", () => {
 		dismissAskUser();
+	});
+
+	pi.events.on("smart-commit:review-started", () => {
+		notifySmartCommit();
+	});
+
+	pi.events.on("smart-commit:committed", () => {
+		dismissSmartCommit();
+	});
+
+	pi.events.on("smart-commit:skipped", () => {
+		dismissSmartCommit();
 	});
 
 	pi.on("before_agent_start", async (_event, ctx) => {
