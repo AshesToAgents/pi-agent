@@ -79,14 +79,6 @@ export default function alerterExtension(pi: ExtensionAPI) {
 		syncContext(ctx);
 	});
 
-	pi.on("session_switch", async (_event, ctx) => {
-		syncContext(ctx);
-	});
-
-	pi.on("session_fork", async (_event, ctx) => {
-		syncContext(ctx);
-	});
-
 	pi.events.on("ask-user:tool-called", () => {
 		notifyAskUser();
 	});
