@@ -89,7 +89,7 @@ const COLLAPSED_ITEM_COUNT = 10;
 const CHILD_PROCESS_ENV_FLAG = "PI_SUBAGENT_CHILD";
 const EXTENSION_TOOLS_FLAG = "extension-tools";
 const BUILTIN_TOOLS = new Set(["read", "bash", "edit", "write", "grep", "find", "ls"]);
-const DEFAULT_AGENT_SCOPE: AgentScope = "both";
+const DEFAULT_AGENT_SCOPE: AgentScope = "all";
 const SYSTEM_PROMPT_AGENT_OVERVIEW_LIMIT = 12;
 
 type AgentInfoDetail = "summary" | "full";
@@ -154,12 +154,12 @@ function formatAgentFullList(agents: AgentConfig[]): string {
 		.join("\n\n");
 }
 
-function buildSubagentAgentsReport(cwd: string, agentScope: AgentScope, detail: AgentInfoDetail): {
+async function buildSubagentAgentsReport(cwd: string, agentScope: AgentScope, detail: AgentInfoDetail): Promise<{
 	text: string;
-	discovery: ReturnType<typeof discoverAgents>;
+	discovery: Awaited<ReturnType<typeof discoverAgents>>;
 	agents: AgentConfig[];
-} {
-	const discovery = discoverAgents(cwd, agentScope);
+}> {
+	const discovery = await discoverAgents(cwd, agentScope);
 	const agents = sortAgentsByName(discovery.agents);
 
 	const header = `Available subagents: ${agents.length} (scope: ${agentScope})`;
@@ -177,8 +177,8 @@ function buildSubagentAgentsReport(cwd: string, agentScope: AgentScope, detail: 
 	};
 }
 
-function buildSubagentOverviewForPrompt(cwd: string): string {
-	const discovery = discoverAgents(cwd, DEFAULT_AGENT_SCOPE);
+async function buildSubagentOverviewForPrompt(cwd: string): Promise<string> {
+	const discovery = await discoverAgents(cwd, DEFAULT_AGENT_SCOPE);
 	const topLevelAgents = sortAgentsByName(discovery.agents.filter((a) => isTopLevelAgent(a)));
 
 	if (topLevelAgents.length === 0) {
@@ -200,7 +200,7 @@ function buildSubagentOverviewForPrompt(cwd: string): string {
 		"",
 		listed.map((a) => `- ${a.name}: ${a.description}`).join("\n") + moreLine,
 		"",
-		'If you need more details, call `subagent_agents` (supports `agentScope: "user" | "project" | "both"`, default `"both"`).',
+		'If you need more details, call `subagent_agents` (supports `agentScope: "user" | "project" | "package" | "all"`, default `"all"`).',
 	].join("\n");
 }
 
@@ -215,7 +215,7 @@ function parseSubagentsCommandArgs(args: string): { agentScope: AgentScope; deta
 	let detail: AgentInfoDetail = "summary";
 
 	for (const token of tokens) {
-		if (token === "user" || token === "project" || token === "both") {
+		if (token === "user" || token === "project" || token === "package" || token === "all") {
 			agentScope = token;
 			continue;
 		}
@@ -230,7 +230,7 @@ function parseSubagentsCommandArgs(args: string): { agentScope: AgentScope; deta
 		return {
 			agentScope,
 			detail,
-			error: `Unknown argument: ${token}. Use scope {user|project|both} and optional {summary|full}.`,
+			error: `Unknown argument: ${token}. Use scope {user|project|package|all} and optional {summary|full}.`,
 		};
 	}
 
@@ -350,7 +350,7 @@ interface UsageStats {
 
 interface SingleResult {
 	agent: string;
-	agentSource: "user" | "project" | "unknown";
+	agentSource: "user" | "project" | "package" | "unknown";
 	task: string;
 	exitCode: number;
 	messages: Message[];
@@ -615,9 +615,9 @@ const ChainItem = Type.Object({
 	cwd: Type.Optional(Type.String({ description: "Working directory for the agent process" })),
 });
 
-const AgentScopeSchema = StringEnum(["user", "project", "both"] as const, {
-	description: 'Which agent directories to use. Default: "both".',
-	default: "both",
+const AgentScopeSchema = StringEnum(["user", "project", "package", "all"] as const, {
+	description: 'Which agent directories to use. Default: "all".',
+	default: "all",
 });
 
 const AgentInfoDetailSchema = StringEnum(["summary", "full"] as const, {
@@ -667,7 +667,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("before_agent_start", async (event, ctx) => {
 		if (process.env[CHILD_PROCESS_ENV_FLAG] === "1") return;
-		const overview = buildSubagentOverviewForPrompt(ctx.cwd);
+		const overview = await buildSubagentOverviewForPrompt(ctx.cwd);
 		return {
 			systemPrompt: `${event.systemPrompt}\n\n${overview}`,
 		};
@@ -683,7 +683,7 @@ export default function (pi: ExtensionAPI) {
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			const agentScope: AgentScope = params.agentScope ?? DEFAULT_AGENT_SCOPE;
 			const detail: AgentInfoDetail = (params.detail ?? "summary") as AgentInfoDetail;
-			const report = buildSubagentAgentsReport(ctx.cwd, agentScope, detail);
+			const report = await buildSubagentAgentsReport(ctx.cwd, agentScope, detail);
 
 			return {
 				content: [{ type: "text", text: report.text }],
@@ -705,7 +705,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("subagents", {
-		description: "List available subagents. Usage: /subagents [user|project|both] [summary|full]",
+		description: "List available subagents. Usage: /subagents [user|project|package|all] [summary|full]",
 		handler: async (args, ctx) => {
 			const parsed = parseSubagentsCommandArgs(args);
 			if (parsed.error) {
@@ -713,7 +713,7 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			const report = buildSubagentAgentsReport(ctx.cwd, parsed.agentScope, parsed.detail);
+			const report = await buildSubagentAgentsReport(ctx.cwd, parsed.agentScope, parsed.detail);
 			pi.sendMessage({
 				customType: "subagent-agents",
 				content: report.text,
@@ -795,15 +795,15 @@ export default function (pi: ExtensionAPI) {
 		description: [
 			"Delegate tasks to specialized subagents with isolated context.",
 			"Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder).",
-			'Default agent scope is "both" (user + project agents).',
+			'Default agent scope is "all" (user + project + package agents).',
 			'Use subagent_agents for quick discovery (name + description) or full metadata.',
 		].join(" "),
-		promptSnippet: "Delegate tasks to specialized subagents with isolated context. Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder). Default agent scope is \"both\" (user + project agents). Use subagent_agents for quick discovery (name + description) or full metadata.",
+		promptSnippet: "Delegate tasks to specialized subagents with isolated context. Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder). Default agent scope is \"all\" (user + project + package agents). Use subagent_agents for quick discovery (name + description) or full metadata.",
 		parameters: SubagentParams,
 
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			const agentScope: AgentScope = params.agentScope ?? DEFAULT_AGENT_SCOPE;
-			const discovery = discoverAgents(ctx.cwd, agentScope);
+			const discovery = await discoverAgents(ctx.cwd, agentScope);
 			const agents = discovery.agents;
 			const confirmProjectAgents = params.confirmProjectAgents ?? true;
 
@@ -834,7 +834,7 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
-			if ((agentScope === "project" || agentScope === "both") && confirmProjectAgents && ctx.hasUI) {
+			if ((agentScope === "project" || agentScope === "all") && confirmProjectAgents && ctx.hasUI) {
 				const requestedAgentNames = new Set<string>();
 				if (params.chain) for (const step of params.chain) requestedAgentNames.add(step.agent);
 				if (params.tasks) for (const t of params.tasks) requestedAgentNames.add(t.agent);

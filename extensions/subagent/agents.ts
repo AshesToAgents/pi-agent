@@ -5,8 +5,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { getAgentDir, parseFrontmatter } from "@mariozechner/pi-coding-agent";
+import { discoverPackageAgents, type PackageAgentConfig } from "./package-agents.js";
 
-export type AgentScope = "user" | "project" | "both";
+export type AgentScope = "user" | "project" | "package" | "all";
 
 export interface AgentConfig {
 	name: string;
@@ -14,7 +15,7 @@ export interface AgentConfig {
 	tools?: string[];
 	model?: string;
 	systemPrompt: string;
-	source: "user" | "project";
+	source: "user" | "project" | "package";
 	filePath: string;
 	rootDir: string;
 }
@@ -105,22 +106,40 @@ function findNearestProjectAgentsDir(cwd: string): string | null {
 	}
 }
 
-export function discoverAgents(cwd: string, scope: AgentScope): AgentDiscoveryResult {
-	const userDir = path.join(getAgentDir(), "agents");
+function toAgentConfig(pkgAgent: PackageAgentConfig): AgentConfig {
+	return {
+		name: pkgAgent.name,
+		description: pkgAgent.description,
+		tools: pkgAgent.tools,
+		model: pkgAgent.model,
+		systemPrompt: pkgAgent.systemPrompt,
+		source: "package",
+		filePath: pkgAgent.filePath,
+		rootDir: pkgAgent.packageRoot,
+	};
+}
+
+export async function discoverAgents(cwd: string, scope: AgentScope): Promise<AgentDiscoveryResult> {
+	const agentDir = getAgentDir();
+	const userDir = path.join(agentDir, "agents");
 	const projectAgentsDir = findNearestProjectAgentsDir(cwd);
 
-	const userAgents = scope === "project" ? [] : loadAgentsFromDir(userDir, "user");
-	const projectAgents = scope === "user" || !projectAgentsDir ? [] : loadAgentsFromDir(projectAgentsDir, "project");
+	const userAgents = scope === "user" || scope === "all" ? loadAgentsFromDir(userDir, "user") : [];
+	const projectAgents = (scope === "project" || scope === "all") && projectAgentsDir ? loadAgentsFromDir(projectAgentsDir, "project") : [];
+	const packageAgents = scope === "package" || scope === "all" ? (await discoverPackageAgents(cwd, agentDir)).map(toAgentConfig) : [];
 
 	const agentMap = new Map<string, AgentConfig>();
 
-	if (scope === "both") {
+	if (scope === "all") {
 		for (const agent of userAgents) agentMap.set(agent.name, agent);
 		for (const agent of projectAgents) agentMap.set(agent.name, agent);
+		for (const agent of packageAgents) agentMap.set(agent.name, agent);
 	} else if (scope === "user") {
 		for (const agent of userAgents) agentMap.set(agent.name, agent);
-	} else {
+	} else if (scope === "project") {
 		for (const agent of projectAgents) agentMap.set(agent.name, agent);
+	} else if (scope === "package") {
+		for (const agent of packageAgents) agentMap.set(agent.name, agent);
 	}
 
 	return { agents: Array.from(agentMap.values()), projectAgentsDir };

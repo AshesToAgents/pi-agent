@@ -33,7 +33,7 @@ Three modes:
 
 - **Discover agent metadata** (LLM can call this itself)
   ```typescript
-  subagent_agents({ agentScope: "both" })                 // default: summary (name + description)
+  subagent_agents({ agentScope: "all" })                 // default: summary (name + description)
   subagent_agents({ agentScope: "project", detail: "full" })
   ```
 
@@ -43,12 +43,14 @@ Agents are discovered from:
 
 - User agents: `~/.pi/agent/agents/`
 - Project agents: `.pi/agents/` in the current project tree
+- Package agents: `agents/` dirs in installed pi packages (via convention or `pi.agents` manifest)
 
 Control this via `agentScope`:
 
-- `"both"` (default): user + project agents (project overrides on name conflicts)
+- `"all"` (default): user + project + package agents (later sources override on name conflicts)
 - `"user"`: user agents only
 - `"project"`: project agents only
+- `"package"`: package agents only
 
 The extension injects a compact agent overview into `before_agent_start` using only **top-level** agent files (name + description).
 If the model needs more detail (including nested agent files), it can call `subagent_agents`.
@@ -56,7 +58,7 @@ If the model needs more detail (including nested agent files), it can call `suba
 For users, `/subagents` provides the same discovery output in-session:
 
 ```text
-/subagents                  # both + summary (default)
+/subagents                  # all + summary (default)
 /subagents project full     # project scope with full metadata
 /subagents user summary
 ```
@@ -118,14 +120,14 @@ This opens an interactive prompt to select a model for each tier. Aliases are st
 | `cwd`                | string    | Working directory for the agent process (single mode)                       |
 | `tasks`              | array     | `{ agent, task, cwd? }` items for parallel mode (max 8, concurrency 4)     |
 | `chain`              | array     | `{ agent, task, cwd? }` items for chain mode; use `{previous}` placeholder |
-| `agentScope`         | string    | `"both"` \| `"user"` \| `"project"` (default: `"both"`)                   |
+| `agentScope`         | string    | `"all"` \| `"user"` \| `"project"` \| `"package"` (default: `"all"`) |
 | `confirmProjectAgents` | boolean | Prompt before running project-local agents (default: `true`)               |
 
 ### `subagent_agents` tool
 
 | Parameter    | Type   | Description                                                        |
 |--------------|--------|--------------------------------------------------------------------|
-| `agentScope` | string | `"both"` \| `"user"` \| `"project"` (default: `"both"`)          |
+| `agentScope` | string | `"all"` \| `"user"` \| `"project"` \| `"package"` (default: `"all"`) |
 | `detail`     | string | `"summary"` (name + description) \| `"full"` (all metadata)       |
 
 ## Security Model
