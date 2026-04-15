@@ -108,10 +108,22 @@ export default function (pi: ExtensionAPI) {
 		paths: string[],
 		signal: AbortSignal | undefined
 	) {
-		// Stage only the specified paths
-		const addResult = await pi.exec("git", ["add", "--", ...paths], { signal });
-		if (addResult.code !== 0) {
-			throw new Error(`Failed to stage files: ${addResult.stderr}`);
+		// Get already-staged paths so we can skip re-staging them.
+		// This avoids `git add` failing on pre-staged deletions (e.g. from `git rm`)
+		// where the file no longer exists on disk.
+		const cachedResult = await pi.exec("git", ["diff", "--cached", "--name-only"], { signal });
+		const stagedPaths = new Set(
+			cachedResult.code === 0 ? cachedResult.stdout.trim().split("\n").filter(Boolean) : []
+		);
+
+		const toStage = paths.filter((p) => !stagedPaths.has(p));
+
+		if (toStage.length > 0) {
+			// Use -A to handle both additions and deletions (e.g. files removed from disk)
+			const addResult = await pi.exec("git", ["add", "-A", "--", ...toStage], { signal });
+			if (addResult.code !== 0) {
+				throw new Error(`Failed to stage files: ${addResult.stderr}`);
+			}
 		}
 
 		// Commit
