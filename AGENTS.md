@@ -11,5 +11,6 @@ General guidelines:
 - Whenever a plan references the `docs/plans/` directory, instead use the project-specific `.pi/plans/`
 - If the plan_tracker tool is available: Once you're done with the plan, don't forget to clear it
 - find tool patterns with / path separators silently fail — always use the path parameter to set the search directory and keep patterns separator-free (e.g. `*.md` or `**/*.md`).
-- Always use the commit tool instead of commiting with git directly
+- Always use the commit tool instead of commiting with git directly; Skip committing if that isnt possible.
 - When committing, make sure to only add files that are relevant (e.g. you modified them directly, or they were modified because of something you did). If other files are modified, make sure they're related to your changes. Do not just roll back unrelated files, as they might be user-modified, or from another subagent. 
+- Before starting work, make sure you know the context of which project you're working on. Feel free to launch a scout subagent to orient yourself. 
