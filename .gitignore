@@ -1,10 +1,10 @@
-.idea
-.pi
+.idea/
+.pi/
 git/
+bin/
+sessions/
+data/
 models.json
 auth.json
 web-tools.json
-bin/
 settings.json
-sessions/
-data/
