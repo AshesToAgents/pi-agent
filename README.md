@@ -20,3 +20,4 @@ This is my personal pi agent setup. There are many like it, but this one is mine
 [pi-api-usage](https://github.com/SunflowerFuchs/pi-api-usage), displays API usage and rate limit information in the status bar with a detailed `/usage` command
 [pi-token-tracker](https://github.com/SunflowerFuchs/pi-token-tracker), tracks model token usage across sessions with a `/token-usage` command and SQLite-backed history
 [pi-agent-browser](https://github.com/SunflowerFuchs/pi-agent-browser), browser automation via Chrome DevTools Protocol — integrates agent-browser with skills for web interaction, Electron app automation, and exploratory testing
+[pi-session-share](https://github.com/SunflowerFuchs/pi-session-share), publish sessions as rendered HTML pages on a self-hosted server with `/publish` and `/unpublish` commands
