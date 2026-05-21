@@ -1,6 +1,7 @@
 .idea/
 .pi/
 git/
+npm/
 bin/
 sessions/
 data/
