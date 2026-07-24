@@ -7,7 +7,10 @@ sessions/
 data/
 models.json
 auth.json
+trust.json
 web-tools.json
 settings.json
 agent-browser.json
 pi-session-share-config.json
+models-store.json
+vision-proxy.json
